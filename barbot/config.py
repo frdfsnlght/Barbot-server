@@ -22,7 +22,6 @@ def resolvePath(str):
     str = str.replace('!bin', paths.BIN_DIR)
     str = str.replace('!etc', paths.ETC_DIR)
     str = str.replace('!var', paths.VAR_DIR)
-    str = str.replace('!static', paths.STATIC_DIR)
-    str = str.replace('!templates', paths.TEMPLATE_DIR)
+    str = str.replace('!content', paths.CONTENT_DIR)
     return str
         

@@ -13,7 +13,7 @@ db = SqliteDatabase(barbot.config.config.getpath('db', 'dbFile'), pragmas = {
 
 @app.before_request
 def _connect_db():
-    db.connect()
+    db.connect(reuse_if_open = True)
     return None
 
 @app.after_request

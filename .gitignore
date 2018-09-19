@@ -6,4 +6,9 @@ __pycache__/
 var/*.log
 var/*.db*
 etc/config.ini
+content/css
+content/js
+content/img
+content/index.html
+content/favicon.ico
 
