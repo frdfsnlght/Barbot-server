@@ -11,6 +11,10 @@ import barbot.config
 config = barbot.config.load()
 
 import barbot.logging
+
+barbot.logging.configure(config.getboolean('server', 'developmentMode'))
+logger = logging.getLogger('Server')
+
 import barbot.events
 import barbot.daemon
 from barbot.db import db
@@ -21,9 +25,7 @@ from barbot.flaskSocketIO import socket
 import barbot.flaskAppHandlers
 import barbot.flaskSocketIOHandlers
 
-logger = logging.getLogger('Server')
 webThread = None
-
 
 def catchSIGTERM(signum, stackframe):
     logger.info('caught SIGTERM')
@@ -34,18 +36,18 @@ def catchSIGINT(signum, stackframe):
     barbot.events.exitEvent.set()
     
 def webThreadLoop():
-    logger.info('Web thread started')
+    host = config.get('server', 'listenAddress')
+    port = config.get('server', 'listenPort')
+    logger.info('Web thread started on ' + host + ':' + port)
     socket.init_app(app)
     socket.run(
         app,
-        host = config.get('server', 'listenAddress'),
-        port = config.get('server', 'listenPort'),
+        host = host,
+        port = port,
         debug = False)
     logger.info('Web thread stopped')
 
 def startServer():
-    barbot.logging.configure(config.getboolean('server', 'developmentMode'))
-
     barbot.db.db.connect()
     barbot.db.db.create_tables(barbot.models.DBModels)    
     
