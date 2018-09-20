@@ -31,9 +31,9 @@ def _daemonize():
     # redirect standard file descriptors
     sys.stdout.flush()
     sys.stderr.flush()
-    si = file('/dev/null', 'r')
-    so = file('/dev/null', 'a+')
-    se = file('/dev/null', 'a+', 0)
+    si = open('/dev/null', 'r')
+    so = open('/dev/null', 'a+')
+    se = open('/dev/null', 'a+')
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
@@ -41,7 +41,7 @@ def _daemonize():
     # write pidfile
     atexit.register(_deletePID)
     pid = str(os.getpid())
-    file(getPIDFile(), 'w+').write("%s\n" % pid)
+    open(getPIDFile(), 'w+').write("%s\n" % pid)
 
 def _deletePID():
     os.remove(getPIDFile())
@@ -56,7 +56,7 @@ def start(main):
     _daemonize()
     main()
  
-def stop(section):
+def stop():
     pid = getDaemonPID()
     if not pid:
         sys.stderr.write("pidfile %s does not exist. Daemon not running?\n" % getPIDFile())
