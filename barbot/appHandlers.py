@@ -2,8 +2,7 @@
 from flask import request, send_from_directory
 import logging
 
-from barbot.flaskApp import app
-from barbot.models import *
+from barbot.app import app
 import barbot.paths as paths
 
 logger = logging.getLogger(__name__)

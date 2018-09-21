@@ -21,8 +21,7 @@ def configure(console = False):
         handler.setFormatter(logging.Formatter(fmt = config.get('logFormat')))
         root.addHandler(handler)
 
-    # turn down socket IO logging
-    logging.getLogger('socketio').setLevel(logging.WARNING)
-    logging.getLogger('engineio').setLevel(logging.WARNING)
-    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger('socketio').setLevel(getattr(logging, config.get('socketIOLevel')))
+    logging.getLogger('engineio').setLevel(getattr(logging, config.get('engineIOLevel')))
+    logging.getLogger('werkzeug').setLevel(getattr(logging, config.get('werkzeugLevel')))
     

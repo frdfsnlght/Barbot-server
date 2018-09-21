@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 
+import eventlet
+eventlet.monkey_patch()
+
 import sys, os, signal, logging
 from threading import Thread
 
@@ -15,25 +18,27 @@ import barbot.logging
 barbot.logging.configure(config.getboolean('server', 'developmentMode'))
 logger = logging.getLogger('Server')
 
-import barbot.events
-import barbot.daemon
+import barbot.events as events
+import barbot.daemon as daemon
 from barbot.db import db
 from barbot.models import DBModels
-from barbot.flaskApp import app
-from barbot.flaskSocketIO import socket
+from barbot.app import app
+from barbot.socket import socket
+import barbot.wifi as wifi
 
-import barbot.flaskAppHandlers
-import barbot.flaskSocketIOHandlers
+import barbot.appHandlers
+from barbot.socketHandlers import *
+
 
 webThread = None
 
 def catchSIGTERM(signum, stackframe):
     logger.info('caught SIGTERM')
-    barbot.events.exitEvent.set()
+    events.exitEvent.set()
     
 def catchSIGINT(signum, stackframe):
     logger.info('caught SIGINT')
-    barbot.events.exitEvent.set()
+    events.exitEvent.set()
     
 def webThreadLoop():
     host = config.get('server', 'listenAddress')
@@ -44,12 +49,13 @@ def webThreadLoop():
         app,
         host = host,
         port = port,
-        debug = False)
+        debug = config.getboolean('server', 'socketIODebug'),
+        use_reloader  = False)
     logger.info('Web thread stopped')
 
 def startServer():
     barbot.db.db.connect()
-    barbot.db.db.create_tables(barbot.models.DBModels)    
+    barbot.db.db.create_tables(DBModels)    
     
     logger.info('Server starting')
 
@@ -58,17 +64,19 @@ def startServer():
     
     # start threads
     
-    webThread = Thread(target = webThreadLoop, name = 'Web')
+    webThread = Thread(target = webThreadLoop, name = 'WebThread')
     webThread.daemon = True
     webThread.start()
 
+    wifi.startThread()
+    
     logger.info('Server started')
     
     # wait for the end
-    while not barbot.events.exitEvent.is_set():
-        barbot.events.exitEvent.wait(1000)
+    while not events.exitEvent.is_set():
+        events.exitEvent.wait(1)
         
-    barbot.events.exitEvent.set()
+    events.exitEvent.set()
     
     logger.info('Server stopped')
 
@@ -77,13 +85,13 @@ if len(sys.argv) == 2:
         if (config.getboolean('server', 'developmentMode')):
             startServer()
         else:
-            barbot.daemon.start(startServer)
+            daemon.start(startServer)
     elif 'stop' == sys.argv[1]:
-        barbot.daemon.stop()
+        daemon.stop()
     elif 'restart' == sys.argv[1]:
-        barbot.daemon.restart(startServer)
+        daemon.restart(startServer)
     elif 'status' == sys.argv[1]:
-        barbot.daemon.status()
+        daemon.status()
     else:
         print('Unknown command')
         sys.exit(2)

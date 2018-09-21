@@ -2,7 +2,7 @@
 from peewee import SqliteDatabase
 
 import barbot.config
-from barbot.flaskApp import app
+from barbot.app import app
 
 db = SqliteDatabase(barbot.config.config.getpath('db', 'dbFile'), pragmas = {
     'journal_mode': 'wal',  # allow readers and writers to co-exist
