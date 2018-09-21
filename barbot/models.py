@@ -31,6 +31,16 @@ class Ingredient(Model):
     isAlcoholic = BooleanField(default = True)
     timesDispensed = IntegerField(default = 0)
     amountDispensed = FloatField(default = 0)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'isAlcoholic': self.isAlcoholic,
+            'timesDispensed': self.timesDispensed,
+            'amountDispensed': self.amountDispensed,
+        }
+    
     class Meta:
         database = db
 
@@ -45,6 +55,19 @@ class Drink(Model):
     createdDate = DateTimeField(default = datetime.datetime.now)
     updatedDate = DateTimeField(default = datetime.datetime.now)
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'primaryName': self.primaryName,
+            'secondaryName': self.secondaryName,
+            'instructions': self.instructions,
+            'timesDispensed': self.timesDispensed,
+            'isFavorite': self.isFavorite,
+            'glass': self.glass.to_dict(),
+            'createdDate': self.createdDate,
+            'updatedDate': self.updatedDate,
+        }
+    
     class Meta:
         database = db
         indexes = (
@@ -62,6 +85,25 @@ class DrinkIngredient(Model):
             (('drink', 'ingredient'), True),
         )
 
+class DrinkOrder(Model):
+    drink = ForeignKeyField(Drink, backref = 'orders')
+    name = CharField(null = True)
+    createdDate = DateTimeField(default = datetime.datetime.now)
+    onHold = BooleanField(default = False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'drink': self.drink.to_dict(),
+            'name': self.name,
+            'createdDate': self.createdDate,
+            'onHold': self.onHold,
+        }
+    
+    class Meta:
+        database = db
+
+        
 class MenuDrink():
     drink = None
     
@@ -71,15 +113,13 @@ class Pump():
     ingredient = None
     amount = None
     
-class DrinkOrder():
-    drink = None
-    name = None
     
 
 DBModels = [
     Glass,
     Ingredient,
     Drink,
-    DrinkIngredient
+    DrinkIngredient,
+    DrinkOrder    ,
 ]
 

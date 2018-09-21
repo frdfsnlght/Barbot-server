@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 
     
 @socket.on('getGlasses')
-def sock_getGlasses():
+def socket_getGlasses():
     logger.info('getGlasses')
     return { 'items': [g.to_dict() for g in Glass.select()] }
 
 @socket.on('saveGlass')
-def sock_saveGlass(item):
+def socket_saveGlass(item):
     logger.info('saveGlass')
     
     if 'id' in item.keys() and item['id'] != False:
@@ -39,7 +39,7 @@ def sock_saveGlass(item):
     return success()
 
 @socket.on('deleteGlass')
-def sock_deleteGlass(item):
+def socket_deleteGlass(item):
     logger.info('deleteGlass')
     
     if 'id' in item.keys() and item['id'] != False:
