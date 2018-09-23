@@ -46,7 +46,7 @@ class Ingredient(Model):
 
 class Drink(Model):
     primaryName = CharField()
-    secondaryName = CharField()
+    secondaryName = CharField(null = True)
     instructions = TextField(null = True)
     timesDispensed = IntegerField(default = 0)
     isFavorite = BooleanField(default = False)
@@ -77,7 +77,8 @@ class Drink(Model):
 class DrinkIngredient(Model):
     drink = ForeignKeyField(Drink, backref = 'ingredients')
     ingredient = ForeignKeyField(Ingredient, backref = 'drinks')
-    amount = FloatField
+    amount = FloatField()
+    units = CharField()
 
     class Meta:
         database = db
@@ -89,7 +90,8 @@ class DrinkOrder(Model):
     drink = ForeignKeyField(Drink, backref = 'orders')
     name = CharField(null = True)
     createdDate = DateTimeField(default = datetime.datetime.now)
-    onHold = BooleanField(default = False)
+    ingredientHold = BooleanField(default = False)
+    userHold = BooleanField(default = False)
     
     def to_dict(self):
         return {
@@ -97,7 +99,8 @@ class DrinkOrder(Model):
             'drink': self.drink.to_dict(),
             'name': self.name,
             'createdDate': self.createdDate,
-            'onHold': self.onHold,
+            'ingredientHold': self.ingredientHold,
+            'userHold': self.userHold,
         }
     
     class Meta:
