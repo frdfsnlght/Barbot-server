@@ -9,9 +9,10 @@ from barbot.socket import socket
 
 logger = logging.getLogger(__name__)
 thread = None
-state = 'n/a'
+state = False
 
 wifiStatePattern = re.compile(r"(?i)(?s)SSID:\"([^\"]+)\".*Link Quality=(\d+)/(\d+).*Signal level=(\-?\d+)")
+wifiNetworkCellPattern = re.compile(r"(?i)(?s)Quality=(\d+)/(\d+).*Signal level=(\-?\d+).*SSID:\"([^\"]+)\".*Authentication Suites.*?: ([\w ]+)")
 
 
 def startThread():
@@ -65,22 +66,41 @@ def getWifiState():
     # connected
     state = {
         'ssid': m.group(1),
-        'quality': float(m.group(2)) / float(m.group(3)),
-        'signal': int(m.group(4))
+        'quality': m.group(2) + '/' + m.group(3),
+        'signal': int(m.group(4)),
+        'bars': int(4.9 * float(m.group(2)) / float(m.group(3)))
     }
-    state['bars'] = int(state['quality'] * 4.9)
     return state
+
+def getWifiNetworks():
+    try:
+        out = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
+    except FileNotFoundError:
+        # command not found
+        return False
+    if out.returncode != 0:
+        # interface not found 
+        return False
+    networks = []
+    for cell in re.split(r"Cell ", out.stdout):
+        m = wifiNetworkCellPattern.search(cell)
+        if m:
+            network = {
+                'quality': m.group(1) + '/' + m.group(2),
+                'signal': int(m.group(3)),
+                'ssid': m.group(4).replace('\\x00', ''),
+                'auth': m.group(5).split(' '),
+                'bars': int(4.9 * float(m.group(1)) / float(m.group(2)))
+            }
+            networks.append(network)
+    return networks
 
     
 # iwconfig
 # iwgetid
 # iwlist
-# discover networks: sudo iwlist wlan0 scan
     
 # https://raspberrypi.stackexchange.com/questions/69084/wi-fi-scanning-and-displaying-using-python-run-by-php
-    
-# Get connected SSID: iwgetid --raw wlan0
-
     
 def emitState():
     emit('wifiState', state)
