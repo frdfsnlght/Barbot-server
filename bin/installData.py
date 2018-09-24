@@ -30,8 +30,8 @@ glasses = [
 ]
 
 Glass.insert_many(glasses, fields=[Glass.type, Glass.size, Glass.units, Glass.description]).execute()
-g1 = Glass.get(Glass.type == 'Highball' and Glass.size == 8)
-g2 = Glass.get(Glass.type == 'Highball' and Glass.size == 16)
+g1 = Glass.get(Glass.type == 'Highball', Glass.size == 8)
+g2 = Glass.get(Glass.type == 'Highball', Glass.size == 16)
 
 ingredients = [
     ('Spiced Rum', True),
@@ -74,7 +74,7 @@ DrinkOrder.insert_many(drinkOrders, fields=[DrinkOrder.drink, DrinkOrder.name]).
 
 print('\nGlasses:')
 for glass in Glass.select():
-    print(str(glass.size) + ' ' + glass.units + ' ' + glass.type)
+    print(glass.name())
     
 print('\nIngredients:')
 for ingredient in Ingredient.select():
@@ -82,13 +82,14 @@ for ingredient in Ingredient.select():
     
 print('\nDrinks:')
 for drink in Drink.select():
-    print(drink.primaryName + '/' + drink.secondaryName)
+    print(drink.name())
+    print('  ' + drink.glass.name())
     for di in drink.ingredients:
-        print('  ' + str(di.amount) + ' ' + di.units + ' ' + di.ingredient.name)
+        print('  ' + di.ingredientName())
     
 print('\nDrink Orders:')
 for order in DrinkOrder.select():
-    print(order.drink.primaryName + '/' + order.drink.secondaryName)
+    print(order.drink.name())
     
 
 
