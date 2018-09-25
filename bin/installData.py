@@ -35,32 +35,47 @@ g2 = Glass.get(Glass.type == 'Highball', Glass.size == 16)
 
 ingredients = [
     ('Spiced Rum', True),
-    ('White Rum', True),
+    ('Light Rum', True),
+    ('Dark Rum', True),
+    ('Gin', True),
+    ('Vodka', True),
+    ('Scotch', True),
+    ('Bourbon', True),
+    ('Tequila', True),
+    ('Grenadine', True),
+    ('Cachaca', True),
     ('Coca Cola', False),
+    ('Sprite', False),
+    ('Lime Juice', False),
+    ('Lemon Juice', False),
+    ('Cranberry Juice', False),
+    ('Sugar Syrup', False),
 ]
 
 Ingredient.insert_many(ingredients, fields=[Ingredient.name, Ingredient.isAlcoholic]).execute()
 i1 = Ingredient.get(Ingredient.name == 'Spiced Rum')
-i2 = Ingredient.get(Ingredient.name == 'White Rum')
+i2 = Ingredient.get(Ingredient.name == 'Light Rum')
 i3 = Ingredient.get(Ingredient.name == 'Coca Cola')
 
 drinks = [
-    ('Rum and Coke', 'Traditional', '', g1),
-    ('Rum and Coke', 'Tab\'s Standard', '', g2),
+    ('Rum and Coke', 'Traditional', '', True, g1),
+    ('Rum and Coke', 'Tab\'s Standard', '', True, g2),
 ]
 
-Drink.insert_many(drinks, fields=[Drink.primaryName, Drink.secondaryName, Drink.instructions, Drink.glass]).execute()
+Drink.insert_many(drinks, fields=[Drink.primaryName, Drink.secondaryName, Drink.instructions, Drink.isAlcoholic, Drink.glass]).execute()
 d1 = Drink.get(Drink.primaryName == 'Rum and Coke' and Drink.secondaryName == 'Traditional')
 d2 = Drink.get(Drink.primaryName == 'Rum and Coke' and Drink.secondaryName == 'Tab\'s Standard')
+d2.isFavorite = True
+d2.save()
 
 drinkIngredients = [
-    (d1, i2, 1, 'oz'),
-    (d1, i3, 4, 'oz'),
-    (d2, i1, 2, 'oz'),
-    (d2, i3, 6, 'oz'),
+    (d1, i2, 1, 'oz', 0),
+    (d1, i3, 4, 'oz', 1),
+    (d2, i1, 2, 'oz', 0),
+    (d2, i3, 6, 'oz', 1),
 ]
 
-DrinkIngredient.insert_many(drinkIngredients, fields=[DrinkIngredient.drink, DrinkIngredient.ingredient, DrinkIngredient.amount, DrinkIngredient.units]).execute()
+DrinkIngredient.insert_many(drinkIngredients, fields=[DrinkIngredient.drink, DrinkIngredient.ingredient, DrinkIngredient.amount, DrinkIngredient.units, DrinkIngredient.step]).execute()
 
 drinkOrders = [
     (d2, 'Tab'),

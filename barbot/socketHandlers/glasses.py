@@ -15,6 +15,14 @@ def socket_getGlasses():
     logger.info('getGlasses')
     return { 'items': [g.to_dict() for g in Glass.select()] }
 
+@socket.on('getGlass')
+def socket_getGlass(id):
+    logger.info('getGlass')
+    g = Glass.get(Glass.id == id)
+    if not g:
+        return error('Glass not found!')
+    return g.to_dict(drinks = True)
+    
 @socket.on('saveGlass')
 def socket_saveGlass(item):
     logger.info('saveGlass')
@@ -27,8 +35,7 @@ def socket_saveGlass(item):
     else:
         g = Glass()
         
-    for k, v in item.items():
-        setattr(g, k, v)
+    g.set(item)
     try:
         g.save()
     except IntegrityError as e:
