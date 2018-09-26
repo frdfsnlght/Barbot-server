@@ -10,11 +10,19 @@ from barbot.models import DrinkOrder
 logger = logging.getLogger(__name__)
 
     
-@socket.on('getDrinkOrders')
-def socket_getDrinkOrders():
-    logger.info('getDrinkOrders')
-    return { 'items': [g.to_dict() for g in DrinkOrder.select()] }
+@socket.on('getPendingDrinkOrders')
+def socket_getPendingDrinkOrders():
+    logger.info('getPendingDrinkOrders')
+    return { 'items': [do.to_dict(drink = True) for do in DrinkOrder.select().where(DrinkOrder.startedDate == None)] }
 
+@socket.on('getDrinkOrder')
+def socket_getDrinkOrder(id):
+    logger.info('getDrinkOrder')
+    o = DrinkOrder.get(DrinkOrder.id == id)
+    if not o:
+        return error('Drink order not found!')
+    return {'item': o.to_dict(drink = True)}
+    
 @socket.on('saveDrinkOrder')
 def socket_saveDrinkOrder(item):
     logger.info('saveDrinkOrder')
@@ -33,30 +41,37 @@ def socket_saveDrinkOrder(item):
             return error('Drink not found!')
         item['drink'] = d
     
-    for k, v in item.items():
-        setattr(do, k, v)
-#    try:
+    do.set(item)
     do.save()
-#    except IntegrityError as e:
-#        return error('???')
         
-    emit('drinkOrderSaved', do.to_dict(), broadcast = True)
+    emit('drinkOrderSaved', do.to_dict(drink = True), broadcast = True)
     
     return success()
 
 @socket.on('deleteDrinkOrder')
-def socket_deleteDrinkOrder(item):
+def socket_deleteDrinkOrder(id):
     logger.info('deleteDrinkOrder')
     
-    if 'id' in item.keys() and item['id'] != False:
-        do = DrinkOrder.get(DrinkOrder.id == item['id'])
-        if not do:
-            return error('Drink order not found!')
-        do.delete_instance()
+    d = DrinkOrder.get(DrinkOrder.id == id)
+    if not d:
+        return error('Drink order not found!')
+    d.delete_instance()
         
-        emit('drinkOrderDeleted', do.to_dict(), broadcast = True)
+    emit('drinkOrderDeleted', do.to_dict(), broadcast = True)
     
-        return success()
-    else:
-        return error('Drink order not specified!')
+    return success()
+        
+@socket.on('toggleDrinkOrderHold')
+def socket_toggleDrinkOrderHold(id):
+    logger.info('toggleDrinkOrderHold')
+    
+    d = DrinkOrder.get(DrinkOrder.id == id)
+    if not d:
+        return error('Drink order not found!')
+    d.userHold = not d.userHold
+    d.save()
+        
+    emit('drinkOrderSaved', d.to_dict(drink = True), broadcast = True)
+    
+    return success()
  

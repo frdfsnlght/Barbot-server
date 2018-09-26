@@ -2,6 +2,7 @@ from flask import request
 from flask_socketio import emit
 import logging
 
+from barbot.config import config
 from barbot.socket import socket, success, error
 import barbot.wifi as wifi
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 @socket.on('connect')
 def sock_connect():
     logger.info('connection opened from ' + request.remote_addr)
+    emit('clientOptions', dict(config.items('client')))
     wifi.emitState()
 
 @socket.on('disconnect')

@@ -104,13 +104,16 @@ class Drink(BarbotModel):
         return self.primaryName + (('/' + self.secondaryName) if self.secondaryName else '')
         
     def setIngredients(self, ingredients):
+        isAlcoholic = False
+        
         # update/remove ingredients
         for di in self.ingredients:
             i = next((ingredient for ingredient in ingredients if ingredient['ingredientId'] == di.ingredient.id), None)
             if i:
                 di.set(i)
                 di.save()
-                logger.info('updating ' + str(di.id))
+                isAlcoholic = isAlcoholic | di.ingredient.isAlcoholic
+                #logger.info('updating ' + str(di.id))
                 ingredients.remove(i)
             else:
                 di.delete_instance()
@@ -122,7 +125,13 @@ class Drink(BarbotModel):
             di.drink = self.id
             di.set(ingredient)
             di.save()
+            isAlcoholic = isAlcoholic | di.ingredient.isAlcoholic
             logger.info('add ingredient ' + str(ingredient['ingredientId']))
+    
+        if isAlcoholic != self.isAlcoholic:
+            self.isAlcoholic = isAlcoholic
+            self.save()
+    
     
     def to_dict(self, glass = False, ingredients = False):
         out = {
@@ -203,7 +212,9 @@ class DrinkOrder(BarbotModel):
     userHold = BooleanField(default = False)
     
     def set(self, dict):
-        if 'drinkId' in dict:
+        if 'drink' in dict:
+            self.drink = dict['drink']
+        elif 'drinkId' in dict:
             self.drink = int(dict['drinkId'])
         if 'name' in dict:
             self.name = str(dict['name'])
@@ -216,8 +227,8 @@ class DrinkOrder(BarbotModel):
             'drinkId': self.drink.id,
             'name': self.name,
             'createdDate': self.createdDate.isoformat(),
-            'startedDate': self.startedDate.isoformat(),
-            'completedDate': self.completedDate.isoformat(),
+            'startedDate': self.startedDate.isoformat() if self.startedDate else None,
+            'completedDate': self.completedDate.isoformat() if self.completedDate else None,
             'ingredientHold': self.ingredientHold,
             'userHold': self.userHold,
         }

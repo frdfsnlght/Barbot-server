@@ -21,7 +21,7 @@ def socket_getGlass(id):
     g = Glass.get(Glass.id == id)
     if not g:
         return error('Glass not found!')
-    return g.to_dict(drinks = True)
+    return {'item': g.to_dict(drinks = True)}
     
 @socket.on('saveGlass')
 def socket_saveGlass(item):

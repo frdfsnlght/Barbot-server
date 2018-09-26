@@ -20,7 +20,7 @@ def socket_getIngredient(id):
     i = Ingredient.get(Ingredient.id == id)
     if not i:
         return error('Ingredient not found!')
-    return i.to_dict(drinks = True)
+    return {'item': i.to_dict(drinks = True)}
     
 @socket.on('saveIngredient')
 def socket_saveIngredient(item):

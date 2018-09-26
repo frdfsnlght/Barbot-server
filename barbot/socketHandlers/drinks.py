@@ -21,13 +21,13 @@ def socket_getDrink(id):
     d = Drink.get(Drink.id == id)
     if not d:
         return error('Drink not found!')
-    return d.to_dict(glass = True, ingredients = True)
+    return {'item': d.to_dict(glass = True, ingredients = True)}
     
 @socket.on('saveDrink')
 @db.atomic()
 def socket_saveDrink(item):
     logger.info('saveDrink')
-    logger.info(item)
+#    logger.info(item)
     
     if 'id' in item.keys() and item['id'] != False:
         d = Drink.get(Drink.id == item['id'])
