@@ -7,7 +7,7 @@ from barbot.socket import socket, success, error
 from barbot.models import Drink, DrinkIngredient
 from barbot.db import db
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Socket_Drinks')
 
     
 @socket.on('getDrinks')

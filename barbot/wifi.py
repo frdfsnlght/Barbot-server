@@ -7,7 +7,7 @@ import barbot.config as config
 import barbot.events as events
 from barbot.socket import socket
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Wifi')
 thread = None
 state = False
 

@@ -7,7 +7,7 @@ from barbot.socket import socket, success, error
 from barbot.models import DrinkOrder
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Socket_DrinkOrders')
 
     
 @socket.on('getPendingDrinkOrders')

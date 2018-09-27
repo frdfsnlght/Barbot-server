@@ -6,7 +6,7 @@ from barbot.config import config
 from barbot.socket import socket, success, error
 import barbot.wifi as wifi
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Socket_Default')
 
 
 @socket.on('connect')

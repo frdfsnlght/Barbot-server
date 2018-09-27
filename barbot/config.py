@@ -13,6 +13,7 @@ def load():
             'path': resolvePath
         }
     )
+    config.optionxform = str    # preserve option case
     config.read(os.path.join(paths.ETC_DIR, 'config-default.ini'))
     config.read(os.path.join(paths.ETC_DIR, 'config.ini'))
     return config

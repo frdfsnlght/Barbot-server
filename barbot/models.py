@@ -3,6 +3,8 @@ import logging, datetime
 from peewee import *
 
 from barbot.db import db
+from barbot.config import config
+
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +81,12 @@ class Ingredient(BarbotModel):
 class Drink(BarbotModel):
     primaryName = CharField()
     secondaryName = CharField(null = True)
-    instructions = TextField(null = True)
-    timesDispensed = IntegerField(default = 0)
-    isFavorite = BooleanField(default = False)
     glass = ForeignKeyField(Glass, backref = 'drinks')
+    instructions = TextField(null = True)
+    isFavorite = BooleanField(default = False)
     isAlcoholic = BooleanField(default = True)
-    
+    isOnMenu = BooleanField(default = False)
+    timesDispensed = IntegerField(default = 0)
     createdDate = DateTimeField(default = datetime.datetime.now)
     updatedDate = DateTimeField(default = datetime.datetime.now)
 
@@ -132,20 +134,20 @@ class Drink(BarbotModel):
             self.isAlcoholic = isAlcoholic
             self.save()
     
-    
     def to_dict(self, glass = False, ingredients = False):
         out = {
             'id': self.id,
             'primaryName': self.primaryName,
             'secondaryName': self.secondaryName,
+            'glassId': self.glass.id,
             'instructions': self.instructions,
-            'timesDispensed': self.timesDispensed,
             'isFavorite': self.isFavorite,
             'isAlcoholic': self.isAlcoholic,
+            'isOnMenu': self.isOnMenu,
+            'timesDispensed': self.timesDispensed,
             'createdDate': self.createdDate.isoformat(),
             'updatedDate': self.updatedDate.isoformat(),
             'name': self.name(),
-            'glassId': self.glass.id,
         }
         if glass:
             out['glass'] = self.glass.to_dict()
@@ -211,6 +213,25 @@ class DrinkOrder(BarbotModel):
     ingredientHold = BooleanField(default = False)
     userHold = BooleanField(default = False)
     
+    @staticmethod
+    def getFirstPending():
+        try:
+            return DrinkOrder.select().where(
+                (DrinkOrder.startedDate.is_null()) &
+                (DrinkOrder.ingredientHold == False) &
+                (DrinkOrder.userHold == False)
+            ).order_by(DrinkOrder.createdDate.asc()).first()
+        except DoesNotExist:
+            return None
+        
+    @staticmethod
+    def deleteOldCompleted():
+        num = DrinkOrder.delete().where(
+                    DrinkOrder.completedDate < (datetime.datetime.now() - datetime.timedelta(seconds = config.getint('barbot', 'maxDrinkOrderAge')))
+                ).execute()
+        if num:
+            logger.info('deleted ' + str(num) + ' old drink orders')
+        
     def set(self, dict):
         if 'drink' in dict:
             self.drink = dict['drink']
@@ -240,22 +261,49 @@ class DrinkOrder(BarbotModel):
         database = db
 
         
-class MenuDrink():
-    drink = None
+class Pump(BarbotModel):
+    number = IntegerField()
+    name = CharField()
+    ingredient = ForeignKeyField(Ingredient, backref = 'pump', null = True)
+    amount = FloatField(default = 0)
+    units = CharField(default = 'ml')
+    state = CharField(null = True)
     
-class Pump():
-    bank = None
-    number = None
-    ingredient = None
-    amount = None
+    def set(self, dict):
+        if 'ingredient' in dict:
+            self.ingredient = dict['ingredient']
+        elif 'ingredientId' in dict:
+            self.ingredient = int(dict['ingredientId'])
+        if 'amount' in dict:
+            self.amount = float(dict['amount'])
+        if 'units' in dict:
+            self.units = str(dict['units'])
     
-    
+    def to_dict(self, ingredient = False):
+        out = {
+            'id': self.id,
+            'number': self.number,
+            'name': self.name,
+            'amount': self.amount,
+            'units': self.units,
+            'state': self.state,
+        }
+        if ingredient and self.ingredient:
+            out['ingredientId'] = self.ingredient.id
+            out['ingredient'] = self.ingredient.to_dict()
+        return out
+        
+    class Meta:
+        database = db
+
+        
 
 DBModels = [
     Glass,
     Ingredient,
     Drink,
     DrinkIngredient,
-    DrinkOrder    ,
+    DrinkOrder,
+    Pump
 ]
 

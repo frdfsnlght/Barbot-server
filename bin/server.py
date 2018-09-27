@@ -25,6 +25,7 @@ from barbot.models import DBModels
 from barbot.app import app
 from barbot.socket import socket
 import barbot.wifi as wifi
+import barbot.barbot as bb
 
 import barbot.appHandlers
 from barbot.socketHandlers import *
@@ -69,6 +70,7 @@ def startServer():
     webThread.start()
 
     wifi.startThread()
+    bb.startThread()
     
     logger.info('Server started')
     

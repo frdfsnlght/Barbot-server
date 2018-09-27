@@ -1,7 +1,9 @@
 
-import logging, logging.handlers
+import logging, logging.handlers, re
 
 import barbot.config
+
+levelPattern = re.compile(r"^level\.(.*)")
 
 def configure(console = False):
     config = barbot.config.config['logging']
@@ -21,7 +23,7 @@ def configure(console = False):
         handler.setFormatter(logging.Formatter(fmt = config.get('logFormat')))
         root.addHandler(handler)
 
-    logging.getLogger('socketio').setLevel(getattr(logging, config.get('socketIOLevel')))
-    logging.getLogger('engineio').setLevel(getattr(logging, config.get('engineIOLevel')))
-    logging.getLogger('werkzeug').setLevel(getattr(logging, config.get('werkzeugLevel')))
-    
+    for (k, v) in config.items():
+        m = levelPattern.match(k)
+        if m:
+            logging.getLogger(m.group(1)).setLevel(getattr(logging, v))

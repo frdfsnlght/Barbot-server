@@ -7,7 +7,7 @@ from barbot.socket import socket, success, error
 from barbot.models import Glass
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Socket_Glasses')
 
     
 @socket.on('getGlasses')

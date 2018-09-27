@@ -15,6 +15,7 @@ from barbot.models import *
 db.connect()
 db.create_tables(DBModels)
 
+Pump.delete().execute()
 DrinkOrder.delete().execute()
 DrinkIngredient.delete().execute()
 Drink.delete().execute()
@@ -85,7 +86,12 @@ drinkOrders = [
 
 DrinkOrder.insert_many(drinkOrders, fields=[DrinkOrder.drink, DrinkOrder.name]).execute()
 
-
+for i in range(0, 16):
+    p = Pump()
+    p.number = i
+    p.name = '#' + str(i + 1)
+    p.save()
+    
 
 print('\nGlasses:')
 for glass in Glass.select():
@@ -106,6 +112,13 @@ print('\nDrink Orders:')
 for order in DrinkOrder.select():
     print(order.drink.name())
     
+print('\nPumps:')
+for pump in Pump.select():
+    print(pump.name)
+    
+   
+#o = DrinkOrder.getFirstPending()
+#print(o.to_dict())
 
 
 
