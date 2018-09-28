@@ -90,6 +90,18 @@ for i in range(0, 16):
     p = Pump()
     p.number = i
     p.name = '#' + str(i + 1)
+    
+    if i == 0:
+        p.ingredient = i1
+        p.amount = 750
+        p.units = 'ml'
+        p.state = 'ready'
+    elif i == 1:
+        p.ingredient = i3
+        p.amount = 2000
+        p.units = 'ml'
+        p.state = 'ready'
+        
     p.save()
     
 
@@ -114,7 +126,7 @@ for order in DrinkOrder.select():
     
 print('\nPumps:')
 for pump in Pump.select():
-    print(pump.name)
+    print(pump.name + ': ' + str(pump.state) + ' ' + str(pump.ingredient))
     
    
 #o = DrinkOrder.getFirstPending()

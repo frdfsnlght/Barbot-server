@@ -18,7 +18,7 @@ def socket_getDrinks():
 @socket.on('getDrink')
 def socket_getDrink(id):
     logger.info('getDrink')
-    d = Drink.get(Drink.id == id)
+    d = Drink.get_or_none(Drink.id == id)
     if not d:
         return error('Drink not found!')
     return {'item': d.to_dict(glass = True, ingredients = True)}
@@ -30,7 +30,7 @@ def socket_saveDrink(item):
 #    logger.info(item)
     
     if 'id' in item.keys() and item['id'] != False:
-        d = Drink.get(Drink.id == item['id'])
+        d = Drink.get_or_none(Drink.id == item['id'])
         if not d:
             return error('Drink not found!')
         del item['id']
@@ -58,7 +58,7 @@ def socket_deleteDrink(item):
     logger.info('deleteDrink')
     
     if 'id' in item.keys() and item['id'] != False:
-        d = Drink.get(Drink.id == item['id'])
+        d = Drink.get_or_none(Drink.id == item['id'])
         if not d:
             return error('Drink not found!')
         d.delete_instance()

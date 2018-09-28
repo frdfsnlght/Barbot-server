@@ -7,3 +7,4 @@ Barbot's server.
 * flask-socketio
 * eventlet
 * peewee
+* event-bus

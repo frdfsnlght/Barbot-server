@@ -4,7 +4,7 @@ import eventlet
 eventlet.monkey_patch()
 
 import sys, os, signal, logging
-from threading import Thread
+from threading import Thread, Event
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,28 +18,31 @@ import barbot.logging
 barbot.logging.configure(config.getboolean('server', 'developmentMode'))
 logger = logging.getLogger('Server')
 
-import barbot.events as events
+from barbot.events import bus
 import barbot.daemon as daemon
 from barbot.db import db
 from barbot.models import DBModels
 from barbot.app import app
 from barbot.socket import socket
-import barbot.wifi as wifi
-import barbot.barbot as bb
+import barbot.wifi
+import barbot.pumps
+import barbot.barbot
 
 import barbot.appHandlers
 from barbot.socketHandlers import *
 
 
 webThread = None
+exitEvent = Event()
+
 
 def catchSIGTERM(signum, stackframe):
     logger.info('caught SIGTERM')
-    events.exitEvent.set()
+    exitEvent.set()
     
 def catchSIGINT(signum, stackframe):
     logger.info('caught SIGINT')
-    events.exitEvent.set()
+    exitEvent.set()
     
 def webThreadLoop():
     host = config.get('server', 'listenAddress')
@@ -55,8 +58,8 @@ def webThreadLoop():
     logger.info('Web thread stopped')
 
 def startServer():
-    barbot.db.db.connect()
-    barbot.db.db.create_tables(DBModels)    
+    db.connect()
+    db.create_tables(DBModels)    
     
     logger.info('Server starting')
 
@@ -69,16 +72,15 @@ def startServer():
     webThread.daemon = True
     webThread.start()
 
-    wifi.startThread()
-    bb.startThread()
+    bus.emit('server:start')
     
     logger.info('Server started')
     
     # wait for the end
-    while not events.exitEvent.is_set():
-        events.exitEvent.wait(1)
+    while not exitEvent.is_set():
+        exitEvent.wait(1)
         
-    events.exitEvent.set()
+    bus.emit('server:stop')
     
     logger.info('Server stopped')
 

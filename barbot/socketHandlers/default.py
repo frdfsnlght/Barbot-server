@@ -4,19 +4,19 @@ import logging
 
 from barbot.config import config
 from barbot.socket import socket, success, error
-import barbot.wifi as wifi
+from barbot.events import bus
 
 logger = logging.getLogger('Socket_Default')
 
 
 @socket.on('connect')
-def sock_connect():
+def socket_connect():
     logger.info('connection opened from ' + request.remote_addr)
     emit('clientOptions', dict(config.items('client')))
-    wifi.emitState()
+    bus.emit('client:connect')
 
 @socket.on('disconnect')
-def sock_disconnect():
+def socket_disconnect():
     logger.info('connection closed from ' + request.remote_addr)
 
 @socket.on_error_default  # handles all namespaces without an explicit error handler

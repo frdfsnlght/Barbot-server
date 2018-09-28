@@ -6,7 +6,7 @@ from barbot.db import db
 from barbot.config import config
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('Models')
 
 
 class BarbotModel(Model):
@@ -90,6 +90,14 @@ class Drink(BarbotModel):
     createdDate = DateTimeField(default = datetime.datetime.now)
     updatedDate = DateTimeField(default = datetime.datetime.now)
 
+    @staticmethod
+    def getMenuDrinks():
+        return Drink.select().where(Drink.isOnMenu == True).execute()
+
+    @staticmethod
+    def getDrinksWithIngredients(ingredients):
+        return Drink.select(Drink).distinct().join(DrinkIngredient).where(DrinkIngredient.ingredient.in_(list(ingredients))).execute()
+        
     def set(self, dict):
         if 'primaryName' in dict:
             self.primaryName = str(dict['primaryName'])
@@ -223,7 +231,13 @@ class DrinkOrder(BarbotModel):
             ).order_by(DrinkOrder.createdDate.asc()).first()
         except DoesNotExist:
             return None
-        
+    
+    @staticmethod
+    def getWaiting():
+        return DrinkOrder.select().where(
+            DrinkOrder.startedDate.is_null()
+        )
+    
     @staticmethod
     def deleteOldCompleted():
         num = DrinkOrder.delete().where(
@@ -264,10 +278,29 @@ class DrinkOrder(BarbotModel):
 class Pump(BarbotModel):
     number = IntegerField()
     name = CharField()
-    ingredient = ForeignKeyField(Ingredient, backref = 'pump', null = True)
+    ingredient = ForeignKeyField(Ingredient, backref = 'pump', null = True, unique = True)
     amount = FloatField(default = 0)
     units = CharField(default = 'ml')
     state = CharField(null = True)
+    
+    DISABLED = None
+    UNLOADED = 'unloaded'
+    LOADED = 'loaded'
+    READY = 'ready'
+    EMPTY = 'empty'
+    DIRTY = 'dirty'
+    
+    @staticmethod
+    def getReadyPumps():
+        return Pump.select().where(Pump.state == Pump.READY).execute()
+
+    @staticmethod
+    def getReadyIngredients():
+        return Ingredient.select().join(Pump).where(Pump.state == Pump.READY).execute()
+        
+    @staticmethod
+    def getPumpWithIngredientId(id):
+        return Pump.select().where((Pump.state == Pump.READY) & (Pump.ingredient_id == id)).first()
     
     def set(self, dict):
         if 'ingredient' in dict:

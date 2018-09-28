@@ -1,13 +1,14 @@
 
 import sys, os, time, logging, subprocess, re
-from threading import Thread
+from threading import Thread, Event
 from flask_socketio import emit
 
 import barbot.config as config
-import barbot.events as events
+from barbot.events import bus
 from barbot.socket import socket
 
 logger = logging.getLogger('Wifi')
+exitEvent = Event()
 thread = None
 state = False
 
@@ -15,12 +16,22 @@ wifiStatePattern = re.compile(r"(?i)(?s)SSID:\"([^\"]+)\".*Link Quality=(\d+)/(\
 wifiNetworkCellPattern = re.compile(r"(?i)(?s)Quality=(\d+)/(\d+).*Signal level=(\-?\d+).*SSID:\"([^\"]+)\".*Authentication Suites.*?: ([\w ]+)")
 
 
-def startThread():
+@bus.on('server:stop')
+def _bus_serverStop():
+    exitEvent.set()
+    
+@bus.on('client:connect')
+def _bus_clientConnect():
+    emit('wifiState', state)
+    
+@bus.on('server:start')
+def _startThread():
     global thread, state
+    exitEvent.clear()
     if not config.config.getint('wifi', 'checkInterval'):
         logging.info('Wifi checking disabled')
         return
-    state = getWifiState()
+    state = _getWifiState()
     if not state:
         logging.info('Wifi not available')
         return
@@ -33,19 +44,19 @@ def _threadLoop():
     global state
     
     logger.info('Wifi thread started')
-    while not events.exitEvent.is_set():
+    while not exitEvent.is_set():
     
-        state = getWifiState()
+        state = _getWifiState()
         try:
             socket.emit('wifiState', state)  # broadcast by default
         except:
             # ignore
             pass
             
-        events.exitEvent.wait(config.config.getint('wifi', 'checkInterval'))
+        exitEvent.wait(config.config.getint('wifi', 'checkInterval'))
     logger.info('Wifi thread stopped')
     
-def getWifiState():
+def _getWifiState():
     try:
         out = subprocess.run(['iwconfig', config.config.get('wifi', 'interface')],
             stdout = subprocess.PIPE,
@@ -72,7 +83,7 @@ def getWifiState():
     }
     return state
 
-def getWifiNetworks():
+def _getWifiNetworks():
     try:
         out = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
     except FileNotFoundError:
@@ -102,6 +113,4 @@ def getWifiNetworks():
     
 # https://raspberrypi.stackexchange.com/questions/69084/wi-fi-scanning-and-displaying-using-python-run-by-php
     
-def emitState():
-    emit('wifiState', state)
     
