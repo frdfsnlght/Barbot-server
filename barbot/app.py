@@ -2,9 +2,11 @@
 import os, logging
 from flask import Flask
 
-import barbot.paths as paths
+from . import paths
+
 
 logger = logging.getLogger(__name__)
+
 
 # create content directory if it doesn't exist
 if not (os.path.lexists(paths.CONTENT_DIR) or os.path.exists(paths.CONTENT_DIR)):

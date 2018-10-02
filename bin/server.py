@@ -3,7 +3,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-import sys, os, signal, logging
+import sys, os, signal, logging, time
 from threading import Thread, Event
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,18 +18,19 @@ import barbot.logging
 barbot.logging.configure(config.getboolean('server', 'developmentMode'))
 logger = logging.getLogger('Server')
 
-from barbot.events import bus
+from barbot.bus import bus
 import barbot.daemon as daemon
-from barbot.db import db
-from barbot.models import DBModels
+from barbot.db import db, models
 from barbot.app import app
 from barbot.socket import socket
+
+import barbot.barbot
+import barbot.models
 import barbot.wifi
 import barbot.pumps
-import barbot.barbot
 
 import barbot.appHandlers
-from barbot.socketHandlers import *
+import barbot.socketHandlers
 
 
 webThread = None
@@ -59,7 +60,8 @@ def webThreadLoop():
 
 def startServer():
     db.connect()
-    db.create_tables(DBModels)    
+    print(models)
+    db.create_tables(models)    
     
     logger.info('Server starting')
 
@@ -81,6 +83,7 @@ def startServer():
         exitEvent.wait(1)
         
     bus.emit('server:stop')
+    time.sleep(3)
     
     logger.info('Server stopped')
 

@@ -1,9 +1,11 @@
 
 import os, configparser
 
-import barbot.paths as paths
+from . import paths
+
 
 config = None
+
 
 def load():
     global config

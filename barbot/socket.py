@@ -1,7 +1,9 @@
 
 from flask_socketio import SocketIO
 
+
 socket = SocketIO()
+
 
 def success():
     return {'error': False}

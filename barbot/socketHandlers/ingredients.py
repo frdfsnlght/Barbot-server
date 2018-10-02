@@ -1,62 +1,55 @@
 
-from flask_socketio import emit
-from peewee import IntegrityError
 import logging
+from flask_socketio import emit
+from peewee import IntegrityError, DoesNotExist
 
-from barbot.socket import socket, success, error
-from barbot.models import Ingredient
+from ..bus import bus
+from ..socket import socket, success, error
+from ..db import ModelError
+from ..models.Ingredient import Ingredient
 
 
-logger = logging.getLogger('Socket_Ingredients')
+logger = logging.getLogger('Socket.Ingredients')
 
 @socket.on('getIngredients')
-def socket_getIngredients():
+def _socket_getIngredients():
     logger.info('getIngredients')
     return { 'items': [i.to_dict() for i in Ingredient.select()] }
 
 @socket.on('getIngredient')
-def socket_getIngredient(id):
+def _socket_getIngredient(id):
     logger.info('getIngredient')
-    i = Ingredient.get(Ingredient.id == id)
-    if not i:
+    try:
+        i = Ingredient.get(Ingredient.id == id)
+        return {'item': i.to_dict(drinks = True)}
+    except DoesNotExist:
         return error('Ingredient not found!')
-    return {'item': i.to_dict(drinks = True)}
     
 @socket.on('saveIngredient')
-def socket_saveIngredient(item):
+def _socket_saveIngredient(item):
     logger.info('saveIngredient')
-    
-    if 'id' in item.keys() and item['id'] != False:
-        i = Ingredient.get(Ingredient.id == item['id'])
-        if not i:
-            return error('Ingredient not found!')
-        del item['id']
-    else:
-        i = Ingredient()
-    
-    i.set(item)
     try:
-        i.save()
-    except IntegrityError as e:
+        Ingredient.save_from_dict(item)
+        return success()
+    except IntegrityError:
         return error('That ingredient already exists!')
-        
-    emit('ingredientSaved', i.to_dict(), broadcast = True)
-    
-    return success()
+    except ModelError as e:
+        return error(e.message)
 
 @socket.on('deleteIngredient')
-def socket_deleteIngredient(item):
+def _socket_deleteIngredient(id):
     logger.info('deleteIngredient')
-    
-    if 'id' in item.keys() and item['id'] != False:
-        i = Ingredient.get(Ingredient.id == item['id'])
-        if not i:
-            return error('Ingredient not found!')
-        i.delete_instance()
-        
-        emit('ingredientDeleted', i.to_dict(), broadcast = True)
-    
+    try:
+        Ingredient.delete_by_id(id)
         return success()
-    else:
-        return error('Ingredient not specified!')
- 
+    except DoesNotExist:
+        return error('Ingredient not found!')
+
+@bus.on('model:ingredient:saved')
+def _bus_modelIngredientSaved(i):
+    socket.emit('ingredientSaved', i.to_dict())
+
+@bus.on('model:ingredient:deleted')
+def _bus_modelIngredientDeleted(i):
+    socket.emit('ingredientDeleted', i.to_dict())
+        

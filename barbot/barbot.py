@@ -1,25 +1,31 @@
 
 import logging, datetime, time
 from threading import Thread, Event
-from flask_socketio import emit
 
-from barbot.events import bus
-from barbot.socket import socket
-from barbot.models import Drink, DrinkOrder, DrinkIngredient, Pump
-from barbot.config import config
-from barbot.db import db
-import barbot.utils as utils
+from .bus import bus
+from .models.Drink import Drink
+from .models.DrinkOrder import DrinkOrder
+from .models.DrinkIngredient import DrinkIngredient
+from .models.Pump import Pump
+#from .config import config
+from .db import db
+from . import utils
 
 
-DISPENSE = 'dispense'
-HOLD = 'hold'
+IDLE = 'idle'
+WAITING_FOR_GLASS = 'waiting for glass'
+DISPENSING = 'dispensing'
 
+# TODO: add control for e-stop
 
 logger = logging.getLogger('Barbot')
 exitEvent = Event()
 thread = None
-state = DISPENSE
-holdEvent = Event()
+dispenserHold = False
+dispenserState = IDLE
+pumpSetup = False
+requestPumpSetup = False
+
 lastDrinkOrderCheckTime = time.time()
 
 
@@ -29,86 +35,92 @@ def _bus_serverStop():
     
 @bus.on('client:connect')
 def _bus_clientConnect():
-    emit('barbotState', state)
+    bus.emit('barbot:dispenserHold', dispenserHold)
+    bus.emit('barbot:dispenserState', dispenserState)
+    bus.emit('barbot:pumpSetup', pumpSetup)
 
 @bus.on('server:start')
-def _startThread():
+def _bus_startThread():
     global thread
     exitEvent.clear()
     thread = Thread(target = _threadLoop, name = 'BarbotThread', daemon = True)
     thread.start()
 
+@bus.on('barbot:toggleDispenserHold')
+def _bus_toggleDispenserHold():
+    global dispenserHold
+    dispenserHold = not dispenserHold
+    bus.emit('barbot:dispenserHold', dispenserHold)
+    
+@bus.on('barbot:startPumpSetup')
+def _bus_startPumpSetup():
+    global requestPumpSetup
+    requestPumpSetup = True
+    
+@bus.on('barbot:stopPumpSetup')
+def _bus_stopPumpSetup():
+    global requestPumpSetup, pumpSetup
+    requestPumpSetup = False
+    pumpSetup = False
+    bus.emit('barbot:pumpSetup', pumpSetup)
+
 def _threadLoop():
-    global state
+    global lastDrinkOrderCheckTime, requestPumpSetup, pumpSetup
     logger.info('Barbot thread started')
-    _changeState(DISPENSE)
+#    _changeState(DISPENSE)
     while not exitEvent.is_set():
-        if state == DISPENSE:
-            _dispenseLoop()
-        elif state == HOLD:
-            _holdLoop()
+        if requestPumpSetup:
+            requestPumpSetup = False
+            pumpSetup = True
+            bus.emit('barbot:pumpSetup', pumpSetup)
+            
+        # TODO: ensure pumps are stopped too!
+        while pumpSetup or dispenserHold:
+            time.sleep(1)
+            
+        if (time.time() - lastDrinkOrderCheckTime) > 5:
+            lastDrinkOrderCheckTime = time.time()
+            o = DrinkOrder.getFirstPending()
+            if o:
+                _dispenseDrinkOrder(o)
+                time.sleep(1)
         else:
-            logger.error('Unexpected state: ' + state)
-            state = DISPENSE
-        
+            time.sleep(1)
+            
     logger.info('Barbot thread stopped')
-
-def _changeState(newState):
-    global state
-    state = newState
-    try:
-        socket.emit('barbotState', state)
-    except:
-        # ignore
-        pass
-    logger.info('Entering ' + state + ' state')
-    
-def _dispenseLoop():
-    global lastDrinkOrderCheckTime
-    if holdEvent.is_set():
-        _changeState(HOLD)
-        return
-
-    if (time.time() - lastDrinkOrderCheckTime) > 5:
-        lastDrinkOrderCheckTime = time.time()
-        o = DrinkOrder.getFirstPending()
-        if o:
-            _dispenseDrinkOrder(o)
-    else:
-        time.sleep(1)
-        
-    
-    time.sleep(1)
     
 def _dispenseDrinkOrder(o):
+    global dispenserState, dispensingDrinkOrder
     o.startedDate = datetime.datetime.now()
     o.save()
+    dispenserState = WAITING_FOR_GLASS
+    dispensingDrinkOrder = o
     logger.info('Dispensing "' + o.drink.name() + '" for ' + (o.name if o.name else 'unknown'))
-    socket.emit('drinkOrderStarted', o.to_dict(drink = True))
+    bus.emit('barbot:drinkOrderStarted', dispensingDrinkOrder)
+    bus.emit('barbot:dispenserState', dispenserState)
+    
+    # TODO: wait for glass
+    time.sleep(3)
+
+    dispenserState = DISPENSING
+    bus.emit('barbot:dispenserState', dispenserState)
     
     # TODO: dispense it
     time.sleep(5)
     
-    
     o.completedDate = datetime.datetime.now()
     o.save()
+    dispenserState = IDLE
     logger.info('Done dispensing "' + o.drink.name() + '" for ' + (o.name if o.name else 'unknown'))
-    socket.emit('drinkOrderCompleted', o.to_dict(drink = True))
+    bus.emit('barbot:drinkOrderCompleted', dispensingDrinkOrder)
+    bus.emit('barbot:dispenserState', dispenserState)
     
     DrinkOrder.deleteOldCompleted()
-    
-def _holdLoop():
-    if not holdEvent.is_set(): # also require no pumps running, etc...
-        _changeState(DISPENSE)
-        return
-    
-    time.sleep(1)
-    
     
 @bus.on('server:start')
 @db.atomic()
 def _rebuildMenu():
-    logger.info('rebuilding drinks menu')
+    logger.info('Rebuilding drinks menu')
     menuUpdated = False
     ingredients = Pump.getReadyIngredients()
     menuDrinks = Drink.getMenuDrinks()
@@ -137,7 +149,7 @@ def _rebuildMenu():
             # check for all the drink's ingredients
             for di in drink.ingredients:
                 pump = Pump.getPumpWithIngredientId(di.ingredient_id)
-                if not pump or utils.toML(pump.amount, pump.units) < utils.toML(di.amount, di.units):
+                if not pump or pump.state == Pump.EMPTY or utils.toML(pump.amount, pump.units) < utils.toML(di.amount, di.units):
 #                    print('drink "' + drink.name() + '" is missing ingredient ' + di.ingredient.name)
                     onMenu = False
                     break
@@ -154,8 +166,8 @@ def _rebuildMenu():
             drink.save()
             menuUpdated = True
             
-    if menuUpdated:
-        socket.emit('drinksMenuUpdated')
+#    if menuUpdated:
+    bus.emit('barbot:drinksMenuUpdated')
 #        print('menu updated')
     
 #    print('New menu:')
@@ -167,25 +179,10 @@ def _rebuildMenu():
 
 @db.atomic()
 def _updateDrinkOrders():
-    logger.info('updating drink orders')
+    logger.info('Updating drink orders')
     readyPumps = Pump.getReadyPumps()
     for o in DrinkOrder.getWaiting():
-        hold = False
-        
-        if o.drink.isOnMenu:
-            # make sure there's enough of each ingredient
-            for di in o.drink.ingredients:
-                iPumps = [p for p in readyPumps if p.ingredient.id == di.ingredient.id]
-                if not iPumps or utils.toML(iPumps[0].amount, iPumps[0].units) < utils.toML(di.amount, di.units):
-                    hold = True
-                    break
-        else:
-            hold = True
-            
-        if hold != o.ingredientHold:
-            o.ingredientHold = hold
+        if o.drink.isOnMenu == o.ingredientHold:
+            o.ingredientHold = not o.drink.isOnMenu
             o.save()
-            socket.emit('drinkOrderSaved', o.to_dict(drink = True))
-
-#        print(o.drink.name() + ': ' + str(o.ingredientHold))
             

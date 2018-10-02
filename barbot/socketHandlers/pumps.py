@@ -3,19 +3,19 @@ from flask_socketio import emit
 from peewee import IntegrityError
 import logging
 
-from barbot.socket import socket, success, error
-from barbot.models import Pump
-import barbot.pumps as pumps
+from ..socket import socket, success, error
+from ..models.Pump import Pump
+#import ..pumps as pumps
 
 
-logger = logging.getLogger('Socket_Pumps')
+logger = logging.getLogger('Socket.Pumps')
 
 # TODO: most of this functionality should be moved to barbot.pumps with added states and checks
 
 @socket.on('getPumps')
 def socket_getPumps():
     logger.info('getPumps')
-    return { 'items': [p.to_dict(ingredient = True) for p in pumps.pumps] }
+    return { 'items': [p.to_dict(ingredient = True) for p in Pump.select()] }
 
 @socket.on('getPump')
 def socket_getPump(id):

@@ -1,8 +1,8 @@
 
 import logging
 
-from barbot.events import bus
-from barbot.models import Pump
+from .bus import bus
+from .models.Pump import Pump
 
 logger = logging.getLogger(__name__)
 

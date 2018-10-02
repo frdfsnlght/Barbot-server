@@ -1,7 +1,8 @@
 
 import os, sys, atexit, signal, time
 
-import barbot.config
+from .config import config
+
 
 def _daemonize():
     try:
@@ -97,4 +98,4 @@ def getDaemonPID():
     return pid
     
 def getPIDFile():
-    return barbot.config.config.getpath('server', 'pidFile')
+    return config.getpath('server', 'pidFile')

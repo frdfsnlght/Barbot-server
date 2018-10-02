@@ -1,71 +1,57 @@
 
 import logging, datetime
 from flask_socketio import emit
-from peewee import IntegrityError
+from peewee import IntegrityError, DoesNotExist
 
+from barbot.bus import bus
 from barbot.socket import socket, success, error
-from barbot.models import Drink, DrinkIngredient
-from barbot.db import db
+from barbot.models import Drink
 
-logger = logging.getLogger('Socket_Drinks')
+
+logger = logging.getLogger('Socket.Drinks')
 
     
 @socket.on('getDrinks')
-def socket_getDrinks():
+def _socket_getDrinks():
     logger.info('getDrinks')
     return { 'items': [d.to_dict(ingredients = True) for d in Drink.select()] }
     
 @socket.on('getDrink')
-def socket_getDrink(id):
+def _socket_getDrink(id):
     logger.info('getDrink')
-    d = Drink.get_or_none(Drink.id == id)
-    if not d:
+    try:
+        d = Drink.get(Drink.id == id)
+        return {'item': d.to_dict(glass = True, ingredients = True)}
+    except DoesNotExist:
         return error('Drink not found!')
-    return {'item': d.to_dict(glass = True, ingredients = True)}
     
 @socket.on('saveDrink')
-@db.atomic()
-def socket_saveDrink(item):
+def _socket_saveDrink(item):
     logger.info('saveDrink')
-#    logger.info(item)
-    
-    if 'id' in item.keys() and item['id'] != False:
-        d = Drink.get_or_none(Drink.id == item['id'])
-        if not d:
-            return error('Drink not found!')
-        del item['id']
-    else:
-        d = Drink()
-    
-    d.set(item)
-    d.updatedDate = datetime.datetime.now()
-    
     try:
-        d.save()
-    except IntegrityError as e:
+        Drink.save_from_dict(item)
+        return success()
+    except IntegrityError:
         return error('That drink already exists!')
-
-    # handle ingredients
-    if 'ingredients' in item:
-        d.setIngredients(item['ingredients'])
-        
-    emit('drinkSaved', d.to_dict(ingredients = True), broadcast = True)
-    
-    return success()
+    except ModelError as e:
+        return error(e.message)
 
 @socket.on('deleteDrink')
-def socket_deleteDrink(item):
+def _socket_deleteDrink(id):
     logger.info('deleteDrink')
-    
-    if 'id' in item.keys() and item['id'] != False:
-        d = Drink.get_or_none(Drink.id == item['id'])
-        if not d:
-            return error('Drink not found!')
-        d.delete_instance()
-        
-        emit('drinkDeleted', d.to_dict(), broadcast = True)
-    
+    try:
+        Drink.delete_by_id(id)
         return success()
-    else:
-        return error('Drink not specified!')
- 
+    except DoesNotExist:
+        return error('Drink not found!')
+         
+@bus.on('model:drink:saved')
+def _bus_modelDrinkSaved(d):
+    socket.emit('drinkSaved', d.to_dict(ingredients = True))
+
+@bus.on('model:drink:deleted')
+def _bus_modelDrinkDeleted(d):
+    socket.emit('drinkDeleted', d.to_dict())
+
+        
+        

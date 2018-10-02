@@ -1,63 +1,55 @@
 
-from flask_socketio import emit
-from peewee import IntegrityError
 import logging
+from flask_socketio import emit
+from peewee import IntegrityError, DoesNotExist
 
-from barbot.socket import socket, success, error
-from barbot.models import Glass
+from ..bus import bus
+from ..socket import socket, success, error
+from ..db import ModelError
+from ..models.Glass import Glass
 
 
-logger = logging.getLogger('Socket_Glasses')
+logger = logging.getLogger('Socket.Glasses')
 
     
 @socket.on('getGlasses')
-def socket_getGlasses():
+def _socket_getGlasses():
     logger.info('getGlasses')
     return { 'items': [g.to_dict() for g in Glass.select()] }
 
 @socket.on('getGlass')
-def socket_getGlass(id):
+def _socket_getGlass(id):
     logger.info('getGlass')
-    g = Glass.get(Glass.id == id)
-    if not g:
+    try:
+        g = Glass.get(Glass.id == id)
+        return {'item': g.to_dict(drinks = True)}
+    except DoesNotExist:
         return error('Glass not found!')
-    return {'item': g.to_dict(drinks = True)}
     
 @socket.on('saveGlass')
-def socket_saveGlass(item):
+def _socket_saveGlass(item):
     logger.info('saveGlass')
-    
-    if 'id' in item.keys() and item['id'] != False:
-        g = Glass.get(Glass.id == item['id'])
-        if not g:
-            return error('Glass not found!')
-        del item['id']
-    else:
-        g = Glass()
-        
-    g.set(item)
     try:
-        g.save()
-    except IntegrityError as e:
+        Glass.save_from_dict(item)
+        return success()
+    except IntegrityError:
         return error('That glass already exists!')
-        
-    emit('glassSaved', g.to_dict(), broadcast = True)
-    
-    return success()
+    except ModelError as e:
+        return error(e.message)
 
 @socket.on('deleteGlass')
-def socket_deleteGlass(item):
+def _socket_deleteGlass(id):
     logger.info('deleteGlass')
-    
-    if 'id' in item.keys() and item['id'] != False:
-        g = Glass.get(Glass.id == item['id'])
-        if not g:
-            return error('Glass not found!')
-        g.delete_instance()
-        
-        emit('glassDeleted', g.to_dict(), broadcast = True)
-    
+    try:
+        Glass.delete_by_id(id)
         return success()
-    else:
-        return error('Glass not specified!')
- 
+    except DoesNotExist:
+        return error('Drink not found!')
+         
+@bus.on('model:glass:saved')
+def _bus_modelGlassSaved(g):
+    socket.emit('glassSaved', g.to_dict())
+
+@bus.on('model:glass:deleted')
+def _bus_modelGlassDeleted(g):
+    socket.emit('glassDeleted', g.to_dict())

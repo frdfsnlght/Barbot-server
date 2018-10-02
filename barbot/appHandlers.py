@@ -2,10 +2,12 @@
 from flask import request, send_from_directory
 import logging
 
-from barbot.app import app
-import barbot.paths as paths
+from .app import app
+from . import paths
+
 
 logger = logging.getLogger(__name__)
+
 
 @app.route('/js/<path:path>')
 def send_js(path):

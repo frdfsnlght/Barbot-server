@@ -3,9 +3,9 @@ import sys, os, time, logging, subprocess, re
 from threading import Thread, Event
 from flask_socketio import emit
 
-import barbot.config as config
-from barbot.events import bus
-from barbot.socket import socket
+from .config import config
+from .bus import bus
+from .socket import socket
 
 logger = logging.getLogger('Wifi')
 exitEvent = Event()
@@ -28,7 +28,7 @@ def _bus_clientConnect():
 def _startThread():
     global thread, state
     exitEvent.clear()
-    if not config.config.getint('wifi', 'checkInterval'):
+    if not config.getint('wifi', 'checkInterval'):
         logging.info('Wifi checking disabled')
         return
     state = _getWifiState()
@@ -53,12 +53,12 @@ def _threadLoop():
             # ignore
             pass
             
-        exitEvent.wait(config.config.getint('wifi', 'checkInterval'))
+        exitEvent.wait(config.getint('wifi', 'checkInterval'))
     logger.info('Wifi thread stopped')
     
 def _getWifiState():
     try:
-        out = subprocess.run(['iwconfig', config.config.get('wifi', 'interface')],
+        out = subprocess.run(['iwconfig', config.get('wifi', 'interface')],
             stdout = subprocess.PIPE,
             stderr = subprocess.STDOUT,
             universal_newlines = True)
