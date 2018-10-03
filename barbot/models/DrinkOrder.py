@@ -2,9 +2,9 @@
 import logging, datetime
 from peewee import *
 
-from barbot.db import db, BarbotModel, addModel
-from barbot.bus import bus
-from barbot.config import config
+from ..db import db, BarbotModel, addModel
+from ..bus import bus
+from ..config import config
 from .Drink import Drink
 
 

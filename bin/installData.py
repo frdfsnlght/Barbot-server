@@ -9,11 +9,16 @@ import barbot.config
 
 config = barbot.config.load()
 
-from barbot.db import db
-from barbot.models import *
+from barbot.db import db, models
+from barbot.models.Pump import Pump
+from barbot.models.DrinkOrder import DrinkOrder
+from barbot.models.DrinkIngredient import DrinkIngredient
+from barbot.models.Drink import Drink
+from barbot.models.Ingredient import Ingredient
+from barbot.models.Glass import Glass
 
 db.connect()
-db.create_tables(DBModels)
+db.create_tables(models)
 
 Pump.delete().execute()
 DrinkOrder.delete().execute()
@@ -88,18 +93,18 @@ DrinkOrder.insert_many(drinkOrders, fields=[DrinkOrder.drink, DrinkOrder.name]).
 
 for i in range(0, 16):
     p = Pump()
-    p.number = i
-    p.name = '#' + str(i + 1)
     
     if i == 0:
         p.ingredient = i1
         p.amount = 750
         p.units = 'ml'
+        p.containerAmount = 750
         p.state = 'ready'
     elif i == 1:
         p.ingredient = i3
         p.amount = 2000
         p.units = 'ml'
+        p.containerAmount = 2000
         p.state = 'ready'
         
     p.save()
@@ -126,7 +131,7 @@ for order in DrinkOrder.select():
     
 print('\nPumps:')
 for pump in Pump.select():
-    print(pump.name + ': ' + str(pump.state) + ' ' + str(pump.ingredient))
+    print(pump.name() + ': ' + str(pump.state) + ' ' + str(pump.ingredient))
     
    
 #o = DrinkOrder.getFirstPending()

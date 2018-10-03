@@ -2,8 +2,8 @@
 import logging
 from peewee import *
 
-from barbot.db import db, BarbotModel, addModel
-from barbot.bus import bus
+from ..db import db, BarbotModel, addModel
+from ..bus import bus
 
 
 logger = logging.getLogger('Models.Glass')

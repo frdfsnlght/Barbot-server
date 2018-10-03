@@ -2,8 +2,9 @@
 import logging
 from peewee import *
 
-from barbot.db import db, BarbotModel, addModel
-from barbot.models.Drink import Drink
+from ..db import db, BarbotModel, addModel
+from ..bus import bus
+from .Drink import Drink
 from .Ingredient import Ingredient
 
 

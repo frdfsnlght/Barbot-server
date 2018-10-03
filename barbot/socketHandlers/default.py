@@ -63,5 +63,9 @@ def _bus_drinkOrderStarted(o):
 def _bus_drinkOrderCompleted(o):
     socket.emit('drinkOrderCompleted', o.to_dict(drink = True))
     
+@bus.on('barbot:glassReady')
+def _bus_glassReady(g):
+    socket.emit('glassReady', g)
+    
 
     

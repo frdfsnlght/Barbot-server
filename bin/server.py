@@ -60,7 +60,6 @@ def webThreadLoop():
 
 def startServer():
     db.connect()
-    print(models)
     db.create_tables(models)    
     
     logger.info('Server starting')

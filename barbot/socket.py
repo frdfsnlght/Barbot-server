@@ -9,5 +9,5 @@ def success():
     return {'error': False}
 
 def error(msg):
-    return {'error': msg}
+    return {'error': str(msg)}
 

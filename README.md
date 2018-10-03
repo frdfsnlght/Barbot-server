@@ -8,3 +8,9 @@ Barbot's server.
 * eventlet
 * peewee
 * event-bus
+
+## TODO
+* serial port
+* lights
+* sound
+* rebuild drinks menu after drink update, ingredient add, pump not/ready

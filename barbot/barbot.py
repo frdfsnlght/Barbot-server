@@ -24,10 +24,32 @@ thread = None
 dispenserHold = False
 dispenserState = IDLE
 pumpSetup = False
+glassReady = False
 requestPumpSetup = False
 
 lastDrinkOrderCheckTime = time.time()
 
+
+#-----------------
+# TODO: remove this temp code someday
+glassThread = None
+import os.path
+from . import paths
+@bus.on('server:start')
+def _bus_startGlassThread():
+    global glassThread
+    glassThread = Thread(target = _glassThreadLoop, name = 'BarbotGlassThread', daemon = True)
+    glassThread.start()
+def _glassThreadLoop():
+    global glassReady
+    while not exitEvent.is_set():
+        newGlassReady = os.path.isfile(os.path.join(paths.VAR_DIR, 'glass'))
+        if newGlassReady != glassReady:
+            glassReady = newGlassReady
+            bus.emit('barbot:glassReady', glassReady)
+        time.sleep(1)
+# end of temp code
+#---------------------
 
 @bus.on('server:stop')
 def _bus_serverStop():
@@ -38,6 +60,7 @@ def _bus_clientConnect():
     bus.emit('barbot:dispenserHold', dispenserHold)
     bus.emit('barbot:dispenserState', dispenserState)
     bus.emit('barbot:pumpSetup', pumpSetup)
+    bus.emit('barbot:glassReady', glassReady)
 
 @bus.on('server:start')
 def _bus_startThread():

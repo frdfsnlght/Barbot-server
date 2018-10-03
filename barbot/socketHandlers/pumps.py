@@ -1,10 +1,13 @@
 
-from flask_socketio import emit
-from peewee import IntegrityError
 import logging
+from flask_socketio import emit
+from peewee import IntegrityError, DoesNotExist
 
+from ..bus import bus
 from ..socket import socket, success, error
+from ..db import ModelError
 from ..models.Pump import Pump
+
 #import ..pumps as pumps
 
 
@@ -13,152 +16,101 @@ logger = logging.getLogger('Socket.Pumps')
 # TODO: most of this functionality should be moved to barbot.pumps with added states and checks
 
 @socket.on('getPumps')
-def socket_getPumps():
+def _socket_getPumps():
     logger.info('getPumps')
     return { 'items': [p.to_dict(ingredient = True) for p in Pump.select()] }
 
-@socket.on('getPump')
-def socket_getPump(id):
-    logger.info('getPump')
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-    return {'item': p.to_dict(ingredient = True)}
-    
 @socket.on('enablePump')
-def socket_enablePump(id):
+def _socket_enablePump(id):
     logger.info('enablePump ' + str(id))
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-    if p.state == pumps.DISABLED:
-        p.state = pumps.UNLOADED
-        p.save()
-        emit('pumpSaved', p.to_dict(), broadcast = True)
+    try:
+        Pump.enablePump(id)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
     
 @socket.on('disablePump')
-def socket_disablePump(id):
+def _socket_disablePump(id):
     logger.info('disablePump ' + str(id))
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-    if p.state == pumps.UNLOADED:
-        p.state = pumps.DISABLED
-        p.save()
-        emit('pumpSaved', p.to_dict(), broadcast = True)
+    try:
+        Pump.disablePump(id)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
 
 @socket.on('loadPump')
-def socket_loadPump(opt):
-    logger.info('loadPump ' + str(opt['id']))
-    p = Pump.get(Pump.id == int(opt['id']))
-    if not p:
-        return error('Pump not found!')
-    i = Ingredient.get(Ingredient.id == int(opt['ingredientId']))
-    if not i:
-        return error('Ingredient not found!')
-    if p.state == pumps.UNLOADED:
-        p.state = pumps.LOADED
-        p.ingredient = i
-        p.amount = float(opt['amount'])
-        p.units = str(opt['units'])
-        p.save()
-        emit('pumpSaved', p.to_dict(ingredient = True), broadcast = True)
+def _socket_loadPump(params):
+    logger.info('loadPump ' + str(params['id']))
+    try:
+        Pump.loadPump(params)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e)
 
 @socket.on('unloadPump')
-def socket_unloadPump(id):
+def _socket_unloadPump(id):
     logger.info('unloadPump ' + str(id))
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-    if p.state == pumps.LOADED:
-        p.state = pumps.UNLOADED
-        p.ingredient = None
-        p.amount = 0
-        p.units = 'ml'
-        p.save()
-        emit('pumpSaved', p.to_dict(), broadcast = True)
+    try:
+        Pump.unloadPump(id)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
     
-
 @socket.on('primePump')
-def socket_primePump(opt):
-    logger.info('primePump ' + str(opt['id']))
-    p = Pump.get(Pump.id == int(opt['id']))
-    if not p:
+def _socket_primePump(params):
+    logger.info('primePump ' + str(params['id']))
+    try:
+        Pump.primePump(params, useThread = True)
+        return success()
+    except DoesNotExist:
         return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
     
-    if p.state == pumps.LOADED or p.state == pumps.READY:
-        amount = float(opt['amount'])
-        units = str(opt['units'])
-        pumps.prime(p.id, amount, units)
-        p.state = pumps.READY
-        p.save()
-        emit('pumpSaved', p.to_dict(ingredient = True), broadcast = True)
-        return success()
-    else:
-        return error('Invalid pump state!')
-
-@socket.on('reloadPump')
-def socket_reloadPump(opt):
-    logger.info('reloadPump ' + str(opt['id']))
-    p = Pump.get(Pump.id == int(opt['id']))
-    if not p:
-        return error('Pump not found!')
-
-    if p.state == pumps.READY or p.state == pumps.EMPTY:
-        p.state = pumps.READY
-        p.amount = float(opt['amount'])
-        p.units = str(opt['units'])
-        p.save()
-        emit('pumpSaved', p.to_dict(ingredient = True), broadcast = True)
-        return success()
-    else:
-        return error('Invalid pump state!')
+#@socket.on('reloadPump')
+#def _socket_reloadPump(params):
+#    logger.info('reloadPump ' + str(opt['id']))
+#    try:
+#        Pump.reloadPump(params)
+#        return success()
+#    except DoesNotExist:
+#        return error('Pump not found!')
+#    except ModelError as e:
+#        return error(e)
 
 @socket.on('drainPump')
-def socket_drainPump(id):
+def _socket_drainPump(id):
     logger.info('drainPump ' + str(id))
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-
-    if p.state == pumps.READY or p.state == pumps.EMPTY:
-        pumps.drain(id)
-        p.state = pumps.DIRTY
-        p.ingredient = None
-        p.amount = 0
-        p.units = 'ml'
-        p.save()
-        emit('pumpSaved', p.to_dict(ingredient = True), broadcast = True)
+    try:
+        Pump.drainPump(id, useThread = True)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
 
 @socket.on('cleanPump')
-def socket_cleanPump(id):
-    logger.info('cleanPump ' + str(id))
-    p = Pump.get(Pump.id == id)
-    if not p:
-        return error('Pump not found!')
-
-    if p.state == pumps.DIRTY:
-        pumps.clean(id)
-        p.state = pumps.UNLOADED
-        p.save()
-        emit('pumpSaved', p.to_dict(), broadcast = True)
+def socket_cleanPump(params):
+    logger.info('cleanPump ' + str(params['id']))
+    try:
+        Pump.cleanPump(params, useThread = True)
         return success()
-    else:
-        return error('Invalid pump state!')
+    except DoesNotExist:
+        return error('Pump not found!')
+    except ModelError as e:
+        return error(e.message)
 
 # TODO: stopPump - stops running pump no matter which state
+
+
+@bus.on('model:pump:saved')
+def _bus_modelPumpSaved(p):
+    socket.emit('pumpSaved', p.to_dict(ingredient = True))

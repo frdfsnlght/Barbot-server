@@ -2,8 +2,8 @@
 import logging, datetime
 from peewee import *
 
-from barbot.db import *
-from barbot.bus import bus
+from ..db import db, BarbotModel, addModel
+from ..bus import bus
 from .Glass import Glass
 
 
