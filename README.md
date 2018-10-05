@@ -8,9 +8,9 @@ Barbot's server.
 * eventlet
 * peewee
 * event-bus
+* pyserial
 
 ## TODO
-* serial port
 * lights
 * sound
-* rebuild drinks menu after drink update, ingredient add, pump not/ready
+* do pumps really need a disabled state?

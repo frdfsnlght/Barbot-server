@@ -29,7 +29,7 @@ def _socket_enablePump(id):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
     
 @socket.on('disablePump')
 def _socket_disablePump(id):
@@ -40,7 +40,7 @@ def _socket_disablePump(id):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('loadPump')
 def _socket_loadPump(params):
@@ -62,7 +62,7 @@ def _socket_unloadPump(id):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
     
 @socket.on('primePump')
 def _socket_primePump(params):
@@ -73,7 +73,7 @@ def _socket_primePump(params):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
     
 #@socket.on('reloadPump')
 #def _socket_reloadPump(params):
@@ -95,7 +95,7 @@ def _socket_drainPump(id):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('cleanPump')
 def socket_cleanPump(params):
@@ -106,7 +106,7 @@ def socket_cleanPump(params):
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 # TODO: stopPump - stops running pump no matter which state
 

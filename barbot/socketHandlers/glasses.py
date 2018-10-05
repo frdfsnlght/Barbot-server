@@ -35,7 +35,7 @@ def _socket_saveGlass(item):
     except IntegrityError:
         return error('That glass already exists!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('deleteGlass')
 def _socket_deleteGlass(id):

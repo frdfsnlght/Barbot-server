@@ -2,7 +2,7 @@
 import logging, datetime
 from peewee import *
 
-from ..db import db, BarbotModel, addModel
+from ..db import db, BarbotModel, ModelError, addModel
 from ..bus import bus
 from .Glass import Glass
 
@@ -35,27 +35,27 @@ class Drink(BarbotModel):
     @db.atomic()
     def save_from_dict(item):
         if 'id' in item.keys() and item['id'] != False:
-            d = Drink.get_or_none(Drink.id == item['id'])
-            if not d:
-                raise ModelError('Drink not found!')
+            d = Drink.get(Drink.id == item['id'])
         else:
             d = Drink()
         d.set(item)
-        d.save()
-        # handle ingredients
         if 'ingredients' in item:
+            if d.get_id() is None:
+                d.save(emitEvent = False)
             d.setIngredients(item['ingredients'])
+        d.save()
         
     @staticmethod
     def delete_by_id(id):
         d = Drink.get(Drink.id == item['id'])
         d.delete_instance()
     
-    def save(self, *args, **kwargs):
+    def save(self, emitEvent = True, *args, **kwargs):
         if self.is_dirty():
             self.updatedDate = datetime.datetime.now()
         if super().save(*args, **kwargs):
-            bus.emit('model:drink:saved', self)
+            if emitEvent:
+                bus.emit('model:drink:saved', self)
         
     def delete_instance(self, *args, **kwargs):
         super().delete_instance(*args, **kwargs)
@@ -78,6 +78,13 @@ class Drink(BarbotModel):
         
     def setIngredients(self, ingredients):
         from .DrinkIngredient import DrinkIngredient
+
+        # don't allow more than 4 ingredients in the same step
+        if len(ingredients) >= 4:
+            for step in {i['step'] for i in ingredients}:
+                stepIngs = [i for i in ingredients if i['step'] == step]
+                if len(stepIngs) >= 4:
+                    raise ModelError('There are already 4 ingredients in the same step!')
 
         isAlcoholic = False
         
@@ -103,9 +110,7 @@ class Drink(BarbotModel):
             isAlcoholic = isAlcoholic | di.ingredient.isAlcoholic
             logger.info('add ingredient ' + str(ingredient['ingredientId']))
     
-        if isAlcoholic != self.isAlcoholic:
-            self.isAlcoholic = isAlcoholic
-            self.save()
+        self.isAlcoholic = isAlcoholic
     
     def to_dict(self, glass = False, ingredients = False):
         out = {

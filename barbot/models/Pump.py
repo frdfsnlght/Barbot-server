@@ -1,25 +1,52 @@
 
-import logging, time, threading
+import logging, time, threading, re
 from peewee import *
 
 from ..db import db, BarbotModel, ModelError, addModel
 from ..config import config
 from ..bus import bus
 from .. import utils
+from .. import serial
 from .Ingredient import Ingredient
+
+
+pumpStopEventPattern = re.compile(r"(?i)PS(\d+)")
 
 
 logger = logging.getLogger('Models.Pump')
 
 pumpExtras = {}
 
+@bus.on('server:start')
+def _bus_serverStart():
+    pumps = Pump.select()
+    if len(pumps) != config.getint('pumps', 'count'):
+        logger.warning('Database pump count doesn\'t match configuration count!')
+        Pump.delete().execute()
+        for i in range(0, config.getint('pumps', 'count')):
+            p = Pump()
+            p.save()
+        logger.info('Initialized pumps')
+
+@bus.on('serial:event')
+def _bus_serialEvent(e):
+    m = pumpStopEventPattern.match(e)
+    if m:
+        p = Pump.get_or_none(Pump.id == int(m.group(1)) + 1)
+        if p:
+            p.running = False
+            p.save()
+            logger.info('Pump {} stopped'.format(p.name()))
+
+            
 class PumpExtra(object):
-    attributes = ['volume', 'running']
+    allAttributes = ['volume', 'running', 'previousState']
+    dirtyAttributes = ['running']
     
-    def __init__(self, id):
-        self.id = id
+    def __init__(self, pump):
+        self.id = pump.id
         
-        conf = config.get('pumps', str(id))
+        conf = config.get('pumps', str(self.id))
         if conf:
             conf = conf.split(',')
             self.volume = float(conf[0])
@@ -27,13 +54,14 @@ class PumpExtra(object):
             self.volume = 0
             
         self.running = False
+        self.previousState = pump.state
         self.isDirty = False
 #        print('PumpExtra created for pump ' + str(id))
         
     def __setattr__(self, attr, value):
         super().__setattr__(attr, value)
 #        print('pumpextra.setattr ' + attr + ' = ' + str(value))
-        if attr != 'isDirty':
+        if attr in PumpExtra.dirtyAttributes:
             self.isDirty = True
         
 
@@ -75,7 +103,7 @@ class Pump(BarbotModel):
         
     @staticmethod
     def loadPump(params):
-        p = Pump.get(Pump.id == params['id'])
+        p = Pump.get(Pump.id == int(params['id']))
         p.load(params)
 
     @staticmethod
@@ -86,22 +114,17 @@ class Pump(BarbotModel):
     @staticmethod
     def primePump(params, *args, **kwargs):
         p = Pump.get(Pump.id == int(params['id']))
-        p.prime(params['amount'] if 'amount' in params else p.volume, *args, **kwargs)
+        p.prime(float(params['amount']) if 'amount' in params else p.volume, *args, **kwargs)
         
-#    @staticmethod
-#    def reloadPump(params):
-#        p = Pump.get(Pump.id == params['id'])
-#        p.reload(params)
-
     @staticmethod
     def drainPump(id, *args, **kwargs):
         p = Pump.get(Pump.id == id)
-        p.drain(p.volume * 1.2, *args, **kwargs)
+        p.drain(p.volume * config.getfloat('pumps', 'drainFactor'), *args, **kwargs)
         
     @staticmethod
     def cleanPump(params, *args, **kwargs):
         p = Pump.get(Pump.id == int(params['id']))
-        p.clean(params['amount'] if 'amount' in params else (p.volume * 1.5), *args, **kwargs)
+        p.clean(float(params['amount']) if 'amount' in params else (p.volume * config.getfloat('pumps', 'cleanFactor')), *args, **kwargs)
         
         
     def save(self, *args, **kwargs):
@@ -115,11 +138,16 @@ class Pump(BarbotModel):
                 raise ModelError('units is required')
             if utils.toML(self.amount, self.units) > utils.toML(self.containerAmount, self.units):
                 raise ModelError('amount must be less than container amount')
-                
+
+        emitStateChanged = False
+        if 'state' in self.dirty_fields:
+            emitStateChanged = True
         if super().save(*args, **kwargs) or self.pumpExtra.isDirty:
             bus.emit('model:pump:saved', self)
             self.pumpExtra.isDirty = False
-            
+            if emitStateChanged:
+                bus.emit('model:pump:stateChanged', self, self.previousState)
+                self.previousState = self.state
         
     def delete_instance(self, *args, **kwargs):
         raise ModelError('pumps cannot be deleted!')
@@ -152,7 +180,7 @@ class Pump(BarbotModel):
             self.set(params)
             self.save()
         else:
-            return error('Invalid pump state!')
+            raise ModelError('Invalid pump state!')
     
     def unload(self):
         if self.state == Pump.LOADED:
@@ -163,7 +191,7 @@ class Pump(BarbotModel):
             self.units = 'ml'
             self.save()
         else:
-            return error('Invalid pump state!')
+            raise ModelError('Invalid pump state!')
     
     def prime(self, amount, useThread = False):
         if self.state == Pump.LOADED or self.state == Pump.READY:
@@ -175,18 +203,10 @@ class Pump(BarbotModel):
                 self.state = Pump.READY
                 self.save()
         else:
-            return error('Invalid pump state!')
+            raise ModelError('Invalid pump state!')
 
-#    def reload(self, params):
-#        if self.state == Pump.READY or self.state == Pump.EMPTY:
-#            self.state = Pump.READY
-#            self.set(params)
-#            self.save()
-#        else:
-#            return error('Invalid pump state!')
-    
     def drain(self, amount, useThread = False):
-        if self.state == Pump.READY or self.state == Pump.EMPTY:
+        if self.state == Pump.READY or self.state == Pump.EMPTY or self.state == Pump.UNLOADED or self.state == Pump.DIRTY:
             if useThread:
                 threading.Thread(target = self.reverse, name = 'PumpThread', args = [amount], daemon = True).start()
             else:
@@ -198,7 +218,7 @@ class Pump(BarbotModel):
             self.units = 'ml'
             self.save()
         else:
-            return error('Invalid pump state!')
+            raise ModelError('Invalid pump state!')
 
     def clean(self, amount, useThread = False):
         if self.state == Pump.DIRTY:
@@ -209,34 +229,52 @@ class Pump(BarbotModel):
             self.state = Pump.UNLOADED
             self.save()
         else:
-            return error('Invalid pump state!')
-            
+            raise ModelError('Invalid pump state!')
+    
+    # amount is ml!
     def forward(self, amount):
-        logger.info('pump ' + self.name() + ' forward ' + str(amount) + ' ml')
+        amount = float(amount)
+        logger.info('Pump {} forward {} ml'.format(self.name(), amount))
         
         self.running = True
+        self.amount = utils.convertUnits(utils.toML(self.amount, self.units) - amount, 'ml', self.units)
         self.save()
         
-        # TODO: use the serial port
-        time.sleep(amount / 2)
-    
-        self.running = False
-        self.save()
-        logger.info('pump ' + self.name() + ' stopped')
+        out = serial.write('PP,{},{},{},{}'.format(
+            self.id - 1,
+            int(amount * config.getfloat('pumps', 'stepsPerML')),
+            config.getint('pumps', 'speed'),
+            config.getint('pumps', 'acceleration')
+        ))
+        if out['error']:
+            logger.error('Pump error: {}'.format(out['error']))
+            
+        #time.sleep(amount / 2)
+        #self.running = False
+        #self.save()
+        #logger.info('Pump {} stopped'.format(self.name()))
         
+    # amount is ml!
     def reverse(self, amount):
-        logger.info('pump ' + self.name() + ' reverse ' + str(amount) + ' ml')
+        amount = float(amount)
+        logger.info('Pump {} reverse {} ml'.format(self.name(), amount))
         
         self.running = True
         self.save()
+
+        out = serial.write('PP,{},{},{},{}'.format(
+            self.id - 1,
+            -int(amount * config.getfloat('pumps', 'stepsPerML')),
+            config.getint('pumps', 'speed'),
+            config.getint('pumps', 'acceleration')
+        ))
+        if out['error']:
+            logger.error('Pump error: {}'.format(out['error']))
         
-        # TODO: use the serial port
-        time.sleep(amount / 2)
-    
-        self.running = False
-        self.save()
-        logger.info('pump ' + self.name() + ' stopped')
-        
+        #time.sleep(amount / 2)
+        #self.running = False
+        #self.save()
+        #logger.info('Pump {} stopped'.format(self.name()))
     
     def name(self):
         return '#' + str(self.id)
@@ -276,16 +314,16 @@ class Pump(BarbotModel):
     def __getattr__(self, attr):
         if attr == 'pumpExtra':
             if self.id not in pumpExtras:
-                pumpExtras[self.id] = PumpExtra(self.id)
+                pumpExtras[self.id] = PumpExtra(self)
             return pumpExtras[self.id]
-        if attr in PumpExtra.attributes:
+        if attr in PumpExtra.allAttributes:
 #            print('getattr ' + attr + ' from PumpExtra')
             return getattr(self.pumpExtra, attr)
 #        print('getattr ' + attr + ' from myself')
         return super().__getattr__(attr)
 
     def __setattr__(self, attr, value):
-        if attr in PumpExtra.attributes:
+        if attr in PumpExtra.allAttributes:
 #            print('setattr ' + attr + ' in PumpExtra')
             setattr(self.pumpExtra, attr, value)
         else:

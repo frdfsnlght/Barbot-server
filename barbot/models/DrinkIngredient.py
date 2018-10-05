@@ -18,7 +18,7 @@ class DrinkIngredient(BarbotModel):
     units = CharField()
     step = IntegerField(default = 0)
 
-    def save(*args, **kwargs):
+    def save(self, *args, **kwargs):
         if super().save(*args, **kwargs):
            # bus.emit('model:drinkIngredient:saved', self)
            pass

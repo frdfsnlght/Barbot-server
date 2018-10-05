@@ -1,11 +1,12 @@
 
-import logging, datetime
+import logging
 from flask_socketio import emit
 from peewee import IntegrityError, DoesNotExist
 
-from barbot.bus import bus
-from barbot.socket import socket, success, error
-from barbot.models import Drink
+from ..bus import bus
+from ..socket import socket, success, error
+from ..db import ModelError
+from ..models.Drink import Drink
 
 
 logger = logging.getLogger('Socket.Drinks')
@@ -31,10 +32,12 @@ def _socket_saveDrink(item):
     try:
         Drink.save_from_dict(item)
         return success()
+    except DoesNotExist:
+        return error('Drink not found!')
     except IntegrityError:
         return error('That drink already exists!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('deleteDrink')
 def _socket_deleteDrink(id):
@@ -47,7 +50,7 @@ def _socket_deleteDrink(id):
          
 @bus.on('model:drink:saved')
 def _bus_modelDrinkSaved(d):
-    socket.emit('drinkSaved', d.to_dict(ingredients = True))
+    socket.emit('drinkSaved', d.to_dict(glass = True, ingredients = True))
 
 @bus.on('model:drink:deleted')
 def _bus_modelDrinkDeleted(d):

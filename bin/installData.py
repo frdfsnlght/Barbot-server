@@ -75,10 +75,10 @@ d2.isFavorite = True
 d2.save()
 
 drinkIngredients = [
-    (d1, i2, 1, 'oz', 0),
-    (d1, i3, 4, 'oz', 1),
-    (d2, i1, 2, 'oz', 0),
-    (d2, i3, 6, 'oz', 1),
+    (d1, i2, 1, 'oz', 1),
+    (d1, i3, 4, 'oz', 2),
+    (d2, i1, 2, 'oz', 1),
+    (d2, i3, 6, 'oz', 2),
 ]
 
 DrinkIngredient.insert_many(drinkIngredients, fields=[DrinkIngredient.drink, DrinkIngredient.ingredient, DrinkIngredient.amount, DrinkIngredient.units, DrinkIngredient.step]).execute()

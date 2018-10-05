@@ -34,7 +34,7 @@ def _socket_saveIngredient(item):
     except IntegrityError:
         return error('That ingredient already exists!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('deleteIngredient')
 def _socket_deleteIngredient(id):

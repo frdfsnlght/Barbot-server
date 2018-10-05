@@ -1,15 +1,15 @@
 
-import logging, datetime, time
+import logging, datetime, time, subprocess
 from threading import Thread, Event
 
 from .bus import bus
+from .config import config
+from .db import db
+from . import utils
 from .models.Drink import Drink
 from .models.DrinkOrder import DrinkOrder
 from .models.DrinkIngredient import DrinkIngredient
 from .models.Pump import Pump
-#from .config import config
-from .db import db
-from . import utils
 
 
 IDLE = 'idle'
@@ -26,6 +26,7 @@ dispenserState = IDLE
 pumpSetup = False
 glassReady = False
 requestPumpSetup = False
+suppressMenuRebuild = False
 
 lastDrinkOrderCheckTime = time.time()
 
@@ -69,6 +70,26 @@ def _bus_startThread():
     thread = Thread(target = _threadLoop, name = 'BarbotThread', daemon = True)
     thread.start()
 
+@bus.on('barbot:restart')
+def _bus_restart():
+    cmd = config.get('server', 'restartCommand').split(' ')
+    out = subprocess.run(cmd,
+            stdout = subprocess.PIPE,
+            stderr = subprocess.STDOUT,
+            universal_newlines = True)
+    if out.returncode != 0:
+        logger.error('Error trying to restart: {}'.format(out.stdout))
+        
+@bus.on('barbot:shutdown')
+def _bus_shutdown():
+    cmd = config.get('server', 'shutdownCommand').split(' ')
+    out = subprocess.run(cmd,
+            stdout = subprocess.PIPE,
+            stderr = subprocess.STDOUT,
+            universal_newlines = True)
+    if out.returncode != 0:
+        logger.error('Error trying to shutdown: {}'.format(out.stdout))
+    
 @bus.on('barbot:toggleDispenserHold')
 def _bus_toggleDispenserHold():
     global dispenserHold
@@ -118,7 +139,7 @@ def _dispenseDrinkOrder(o):
     o.save()
     dispenserState = WAITING_FOR_GLASS
     dispensingDrinkOrder = o
-    logger.info('Dispensing "' + o.drink.name() + '" for ' + (o.name if o.name else 'unknown'))
+    logger.info('Dispensing "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
     bus.emit('barbot:drinkOrderStarted', dispensingDrinkOrder)
     bus.emit('barbot:dispenserState', dispenserState)
     
@@ -134,16 +155,33 @@ def _dispenseDrinkOrder(o):
     o.completedDate = datetime.datetime.now()
     o.save()
     dispenserState = IDLE
-    logger.info('Done dispensing "' + o.drink.name() + '" for ' + (o.name if o.name else 'unknown'))
+    logger.info('Done dispensing "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
     bus.emit('barbot:drinkOrderCompleted', dispensingDrinkOrder)
     bus.emit('barbot:dispenserState', dispenserState)
+    _rebuildMenu()
     
     DrinkOrder.deleteOldCompleted()
-    
+
+@bus.on('model:pump:stateChanged')
+def _bus_pumpChanged(pump, previousState):
+    if pump.state == Pump.READY or previousState == Pump.READY:
+        _rebuildMenu()
+
+@bus.on('model:drink:saved')
+def _bus_drinkSaved(drink):
+    if not suppressMenuRebuild:
+        _rebuildMenu()
+
+@bus.on('model:drink:deleted')
+def _bus_drinkDeleted(drink):
+    _rebuildMenu()
+
 @bus.on('server:start')
 @db.atomic()
 def _rebuildMenu():
+    global suppressMenuRebuild
     logger.info('Rebuilding drinks menu')
+    suppressMenuRebuild = True
     menuUpdated = False
     ingredients = Pump.getReadyIngredients()
     menuDrinks = Drink.getMenuDrinks()
@@ -198,7 +236,7 @@ def _rebuildMenu():
 #        print(drink.name())
         
     _updateDrinkOrders()
-
+    suppressMenuRebuild = False
 
 @db.atomic()
 def _updateDrinkOrders():

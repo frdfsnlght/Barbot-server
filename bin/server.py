@@ -28,6 +28,7 @@ import barbot.barbot
 import barbot.models
 import barbot.wifi
 import barbot.pumps
+import barbot.serial
 
 import barbot.appHandlers
 import barbot.socketHandlers

@@ -38,10 +38,8 @@ def _socket_submitDrinkOrder(item):
     try:
         DrinkOrder.submit_from_dict(item)
         return success()
-#    except IntegrityError:
-#        return error('That drink does not exist!')
     except ModelError as e:
-        return error(e.message)
+        return error(e)
 
 @socket.on('cancelDrinkOrder')
 def _socket_cancelDrinkOrder(id):

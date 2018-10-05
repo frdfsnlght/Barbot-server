@@ -41,7 +41,19 @@ def _socket_startPumpSetup():
 def _socket_stopPumpSetup():
     bus.emit('barbot:stopPumpSetup')
     return success()
-    
+
+@socket.on('restart')
+def _socket_restart():
+    logger.info('Client requested restart')
+    bus.emit('barbot:restart')
+    return success()
+
+@socket.on('shutdown')
+def _socket_shutdown():
+    logger.info('Client requested shutdown')
+    bus.emit('barbot:shutdown')
+    return success()
+
     
 @bus.on('barbot:dispenserHold')
 def _bus_dispenserHold(dispenserHold):
