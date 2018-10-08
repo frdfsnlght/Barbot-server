@@ -29,8 +29,8 @@ class Ingredient(BarbotModel):
         i = Ingredient.get(Ingredient.id == id)
         i.delete_instance()
         
-    def save(self, *args, **kwargs):
-        if super().save(*args, **kwargs):
+    def save(self, emitEvent = False, *args, **kwargs):
+        if super().save(*args, **kwargs) or emitEvent == 'force':
             bus.emit('model:ingredient:saved', self)
     
     def delete_instance(self, *args, **kwargs):
@@ -44,12 +44,14 @@ class Ingredient(BarbotModel):
             self.isAlcoholic = bool(dict['isAlcoholic'])
     
     def to_dict(self, drinks = False):
+        pump = self.pump.first()
         out = {
             'id': self.id,
             'name': self.name,
             'isAlcoholic': self.isAlcoholic,
             'timesDispensed': self.timesDispensed,
             'amountDispensed': self.amountDispensed,
+            'isAvailable': pump and pump.isReady(),
         }
         if drinks:
             out['drinks'] = [di.to_dict(drink = True) for di in self.drinks]

@@ -5,6 +5,7 @@ eventlet.monkey_patch()
 
 import sys, os, signal, logging, time
 from threading import Thread, Event
+from peewee import IntegrityError
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,12 +21,13 @@ logger = logging.getLogger('Server')
 
 from barbot.bus import bus
 import barbot.daemon as daemon
-from barbot.db import db, models
+from barbot.db import db, models, ModelError
 from barbot.app import app
 from barbot.socket import socket
 
 import barbot.barbot
 import barbot.models
+from barbot.models.User import User
 import barbot.wifi
 import barbot.pumps
 import barbot.serial
@@ -83,28 +85,64 @@ def startServer():
         exitEvent.wait(1)
         
     bus.emit('server:stop')
-    time.sleep(3)
+    #time.sleep(3)
     
     logger.info('Server stopped')
 
-if len(sys.argv) == 2:
-    if 'start' == sys.argv[1]:
+def addUser(name = None, fullName = None, password = None, isAdmin = False):
+    isAdmin = type(isAdmin) is str and isAdmin.lower() == 'yes'
+    try:
+        user = User.addUser(name, fullName, password, isAdmin)
+        print('User {} added.'.format(user.name))
+    except IntegrityError:
+        print('User already exists.')
+        sys.exit(1)
+    except ModelError as e:
+        print(str(e))
+        sys.exit(1)
+
+def deleteUser(name = None):
+    try:
+        User.deleteUser(name)
+        print('User deleted.')
+    except ModelError as e:
+        print(str(e))
+        sys.exit(1)
+        
+def userPassword(name = None, password = None):
+    try:
+        User.setUserPassword(name, password)
+        print('Password set.')
+    except ModelError as e:
+        print(str(e))
+        sys.exit(1)
+        
+if len(sys.argv) >= 2:
+    cmd = sys.argv[1].lower()
+    
+    if cmd == 'start':
         if (config.getboolean('server', 'developmentMode')):
             startServer()
         else:
             daemon.start(startServer)
-    elif 'stop' == sys.argv[1]:
+    elif cmd == 'stop':
         daemon.stop()
-    elif 'restart' == sys.argv[1]:
+    elif cmd == 'restart':
         daemon.restart(startServer)
-    elif 'status' == sys.argv[1]:
+    elif cmd == 'status':
         daemon.status()
+    elif cmd == 'adduser':
+        addUser(*sys.argv[2:])
+    elif cmd == 'deluser':
+        deleteUser(*sys.argv[2:])
+    elif cmd == 'userpw':
+        userPassword(*sys.argv[2:])
     else:
         print('Unknown command')
         sys.exit(2)
     sys.exit(0)
 else:
-    print('usage: %s start|stop|restart|status' % sys.argv[0])
+    print('usage: %s start|stop|restart|status|adduser|deluser|userpw' % sys.argv[0])
     sys.exit(2)
 
         

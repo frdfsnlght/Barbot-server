@@ -15,14 +15,14 @@ logger = logging.getLogger('Socket.Drinks')
 @socket.on('getDrinks')
 def _socket_getDrinks():
     logger.info('getDrinks')
-    return { 'items': [d.to_dict(ingredients = True) for d in Drink.select()] }
+    return success(items = [d.to_dict(ingredients = True) for d in Drink.select()])
     
 @socket.on('getDrink')
 def _socket_getDrink(id):
     logger.info('getDrink')
     try:
         d = Drink.get(Drink.id == id)
-        return {'item': d.to_dict(glass = True, ingredients = True)}
+        return success(item = d.to_dict(glass = True, ingredients = True))
     except DoesNotExist:
         return error('Drink not found!')
     

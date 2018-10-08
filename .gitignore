@@ -6,6 +6,7 @@ __pycache__/
 var/*.log
 var/*.db*
 var/glass
+var/parentalCode
 etc/config.ini
 content
 

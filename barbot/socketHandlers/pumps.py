@@ -18,36 +18,16 @@ logger = logging.getLogger('Socket.Pumps')
 @socket.on('getPumps')
 def _socket_getPumps():
     logger.info('getPumps')
-    return { 'items': [p.to_dict(ingredient = True) for p in Pump.select()] }
-
-@socket.on('enablePump')
-def _socket_enablePump(id):
-    logger.info('enablePump ' + str(id))
-    try:
-        Pump.enablePump(id)
-        return success()
-    except DoesNotExist:
-        return error('Pump not found!')
-    except ModelError as e:
-        return error(e)
+    return success(items = [p.to_dict(ingredient = True) for p in Pump.select()])
     
-@socket.on('disablePump')
-def _socket_disablePump(id):
-    logger.info('disablePump ' + str(id))
-    try:
-        Pump.disablePump(id)
-        return success()
-    except DoesNotExist:
-        return error('Pump not found!')
-    except ModelError as e:
-        return error(e)
-
 @socket.on('loadPump')
 def _socket_loadPump(params):
     logger.info('loadPump ' + str(params['id']))
     try:
         Pump.loadPump(params)
         return success()
+    except IntegrityError:
+        return error('Ingredient is already loaded!')
     except DoesNotExist:
         return error('Pump not found!')
     except ModelError as e:
@@ -75,17 +55,6 @@ def _socket_primePump(params):
     except ModelError as e:
         return error(e)
     
-#@socket.on('reloadPump')
-#def _socket_reloadPump(params):
-#    logger.info('reloadPump ' + str(opt['id']))
-#    try:
-#        Pump.reloadPump(params)
-#        return success()
-#    except DoesNotExist:
-#        return error('Pump not found!')
-#    except ModelError as e:
-#        return error(e)
-
 @socket.on('drainPump')
 def _socket_drainPump(id):
     logger.info('drainPump ' + str(id))

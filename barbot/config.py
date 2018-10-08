@@ -1,14 +1,45 @@
 
 import os, configparser
+from threading import Thread, Event
 
 from . import paths
-
+from .bus import bus
 
 config = None
+exitEvent = Event()
+thread = None
+lastModifiedTime = None
+defaultConfig = os.path.join(paths.ETC_DIR, 'config-default.ini')
+localConfig = os.path.join(paths.ETC_DIR, 'config.ini')
 
 
+@bus.on('server:start')
+def _bus_serverStart():
+    global thread
+    exitEvent.clear()
+    if not config.getint('server', 'configCheckInterval'):
+        return
+    thread = Thread(target = _threadLoop, name = 'ConfigThread')
+    thread.daemon = True
+    thread.start()
+
+@bus.on('server:stop')
+def _bus_serverStop():
+    exitEvent.set()
+    
+def _threadLoop():
+    global lastModifiedTime
+    while not exitEvent.is_set():
+        exitEvent.wait(config.getint('server', 'configCheckInterval'))
+        newTime = max(os.stat(defaultConfig).st_mtime, os.stat(localConfig).st_mtime)
+        if newTime > lastModifiedTime:
+            lastModifiedTime = newTime
+            config.read(defaultConfig)
+            config.read(localConfig)
+            bus.emit('config:reloaded')
+    
 def load():
-    global config
+    global config, lastModifiedTime
     config = configparser.ConfigParser(
         interpolation = None,
         converters = {
@@ -16,8 +47,11 @@ def load():
         }
     )
     config.optionxform = str    # preserve option case
-    config.read(os.path.join(paths.ETC_DIR, 'config-default.ini'))
-    config.read(os.path.join(paths.ETC_DIR, 'config.ini'))
+    config.read(defaultConfig)
+    config.read(localConfig)
+    
+    lastModifiedTime = max(os.stat(defaultConfig).st_mtime, os.stat(localConfig).st_mtime)
+    
     return config
 
 def resolvePath(str):

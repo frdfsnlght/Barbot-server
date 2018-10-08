@@ -14,14 +14,14 @@ logger = logging.getLogger('Socket.Ingredients')
 @socket.on('getIngredients')
 def _socket_getIngredients():
     logger.info('getIngredients')
-    return { 'items': [i.to_dict() for i in Ingredient.select()] }
+    return success(items = [i.to_dict() for i in Ingredient.select()])
 
 @socket.on('getIngredient')
 def _socket_getIngredient(id):
     logger.info('getIngredient')
     try:
         i = Ingredient.get(Ingredient.id == id)
-        return {'item': i.to_dict(drinks = True)}
+        return success(item = i.to_dict(drinks = True))
     except DoesNotExist:
         return error('Ingredient not found!')
     

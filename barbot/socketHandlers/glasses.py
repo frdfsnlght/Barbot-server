@@ -15,14 +15,14 @@ logger = logging.getLogger('Socket.Glasses')
 @socket.on('getGlasses')
 def _socket_getGlasses():
     logger.info('getGlasses')
-    return { 'items': [g.to_dict() for g in Glass.select()] }
+    return success(items = [g.to_dict() for g in Glass.select()])
 
 @socket.on('getGlass')
 def _socket_getGlass(id):
     logger.info('getGlass')
     try:
         g = Glass.get(Glass.id == id)
-        return {'item': g.to_dict(drinks = True)}
+        return success(item = g.to_dict(drinks = True))
     except DoesNotExist:
         return error('Glass not found!')
     
