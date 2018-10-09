@@ -14,9 +14,9 @@ from .models.Pump import Pump
 
     
 IDLE = 'idle'
-WAITING_FOR_GLASS = 'waiting for glass'
+WAITING_FOR_START = 'waitStart'
 DISPENSING = 'dispensing'
-WAITING_FOR_PICKUP = 'waiting for pickup'
+WAITING_FOR_PICKUP = 'waitPickup'
 
 sensorEventPattern = re.compile(r"(?i)S(\d)")
 
@@ -27,6 +27,8 @@ exitEvent = Event()
 thread = None
 dispenserHold = False
 dispenserState = IDLE
+dispenserDrinkOrder = None
+dispenseEvent = Event()
 pumpSetup = False
 glassReady = False
 requestPumpSetup = False
@@ -52,7 +54,7 @@ def _bus_serverStop():
 @bus.on('client:connect')
 def _bus_clientConnect():
     bus.emit('barbot:dispenserHold', dispenserHold, singleClient = True)
-    bus.emit('barbot:dispenserState', dispenserState, singleClient = True)
+    bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder, singleClient = True)
     bus.emit('barbot:pumpSetup', pumpSetup, singleClient = True)
     bus.emit('barbot:glassReady', glassReady, singleClient = True)
     bus.emit('barbot:parentalLock', True if _getParentalCode() else False, singleClient = True)
@@ -163,15 +165,27 @@ def _bus_cancelDrinkOrder(id):
     DrinkOrder.cancel_by_id(id)
     # TODO: play clip (local and remote?)
         
-@bus.on('toggleDrinkOrderHold')
+@bus.on('barbot:toggleDrinkOrderHold')
 def _bus_toggleDrinkOrderHold(id):
     DrinkOrder.toggle_hold_by_id(id)
     # TODO: play clip (local and remote?)
        
+@bus.on('barbot:startDispensing')
+def _bus_startDispencing(go):
+    global dispenserState
+    if dispenserState == WAITING_FOR_START:
+        if not go:
+            dispenserState = IDLE
+        dispenseEvent.set()
+    
+@bus.on('barbot:glassReady')
+def _bus_glassReady(ready, singleClient = False):
+    if not ready and dispenserState == WAITING_FOR_PICKUP:
+        dispenseEvent.set()
+
 def _threadLoop():
     global lastDrinkOrderCheckTime, requestPumpSetup, pumpSetup
     logger.info('Barbot thread started')
-#    _changeState(DISPENSE)
     while not exitEvent.is_set():
         if requestPumpSetup:
             requestPumpSetup = False
@@ -194,34 +208,81 @@ def _threadLoop():
     logger.info('Barbot thread stopped')
     
 def _dispenseDrinkOrder(o):
-    global dispenserState, dispensingDrinkOrder
+    global dispenserState, dispenserDrinkOrder
+    # this get the drink out of the queue
     o.startedDate = datetime.datetime.now()
     o.save()
-    dispenserState = WAITING_FOR_GLASS
-    dispensingDrinkOrder = o
-    logger.info('Dispensing "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
-    bus.emit('barbot:drinkOrderStarted', dispensingDrinkOrder)
-    bus.emit('barbot:dispenserState', dispenserState)
     
-    # TODO: wait for glass, set lights, play clip
-    time.sleep(3)
-
+    dispenserDrinkOrder = o
+    logger.info('Starting to dispense "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
+    
+    # wait for user to confirm or cancel the order
+    
+    dispenserState = WAITING_FOR_START
+    dispenseEvent.clear()
+    bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder)
+    
+    dispenseEvent.wait()
+    # TODO: set lights, play clip
+    if dispenserState == IDLE:
+        logger.info('Cancelled dispensing "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
+        dispenserDrinkOrder.startedDate = None
+        dispenserDrinkOrder.userHold = True
+        dispenserDrinkOrder.save()
+        dispenserDrinkOrder = None
+        bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder)
+        return
+        
     dispenserState = DISPENSING
-    bus.emit('barbot:dispenserState', dispenserState)
+    bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder)
     
-    # TODO: dispense it, set lights, play clip
-    time.sleep(5)
+    drink = dispenserDrinkOrder.drink
     
-    # set lights, play clip
-    # TODO: increment times dispensed, set favorite
-    # TODO: increment ingredients' time/amount dispensed
+    for step in sorted({i.step for i in drink.ingredients}):
+        ingredients = [di for di in drink.ingredients if di.step == step]
+        logger.info('Step {}, {} ingredients'.format(step, len(ingredients)))
+        pumps = []
+        
+        # start the pumps
+        for di in ingredients:
+            ingredient = di.ingredient
+            pump = ingredient.pump.first()
+            amount = utils.toML(di.amount, di.units)
+            pump.forwardAsync(amount)
+            ingredient.timesDispensed = ingredient.timesDispensed + 1
+            ingredient.amountDispensed = ingredient.amountDispensed + amount
+            ingredient.save()
+            pumps.append(pump)
+            
+        # wait for the pumps to stop
+        while len(pumps):
+            if pumps[-1].running:
+                time.sleep(1)
+            else:
+                pumps.pop()
+
+        # proceed to next step...
+        
+    # all done!
+    drink.timesDispensed = drink.timesDispensed + 1
+    drink.save()
+    dispenserDrinkOrder.completedDate = datetime.datetime.now()
+    dispenserDrinkOrder.save()
+                
+    dispenserState = WAITING_FOR_PICKUP
+    dispenseEvent.clear()
+    bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder)
     
-    o.completedDate = datetime.datetime.now()
-    o.save()
+    # TODO: set lights, play clip
+    
+    dispenseEvent.wait()
+    
+    # TODO: set lights, play clip
+    
+    logger.info('Done dispensing "{}" for {}'.format(dispenserDrinkOrder.drink.name(), dispenserDrinkOrder.name if dispenserDrinkOrder.name else 'unknown'))
     dispenserState = IDLE
-    logger.info('Done dispensing "{}" for {}'.format(o.drink.name(), o.name if o.name else 'unknown'))
-    bus.emit('barbot:drinkOrderCompleted', dispensingDrinkOrder)
-    bus.emit('barbot:dispenserState', dispenserState)
+    dispenserDrinkOrder = None
+    bus.emit('barbot:dispenserState', dispenserState, dispenserDrinkOrder)
     _rebuildMenu()
     
     DrinkOrder.deleteOldCompleted()

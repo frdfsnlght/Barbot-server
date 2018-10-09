@@ -121,7 +121,10 @@ def _socket_toggleDrinkOrderHold(id):
     except DoesNotExist:
         return error('Drink order not found!')
 
-
+@socket.on('startDispensing')
+def _socket_startDispencing(start):
+    bus.emit('barbot:startDispensing', start)
+    
 #================================================================
 # bus events
 #
@@ -134,11 +137,13 @@ def _bus_dispenserHold(dispenserHold, singleClient = False):
         socket.emit('dispenserHold', dispenserHold)
     
 @bus.on('barbot:dispenserState')
-def _bus_dispenserState(dispenserState, singleClient = False):
+def _bus_dispenserState(dispenserState, dispenserDrinkOrder, singleClient = False):
+    if dispenserDrinkOrder:
+        dispenserDrinkOrder = dispenserDrinkOrder.to_dict(drink = True, glass = True)
     if singleClient:
-        emit('dispenserState', dispenserState)
+        emit('dispenserState', {'state': dispenserState, 'order': dispenserDrinkOrder})
     else:
-        socket.emit('dispenserState', dispenserState)
+        socket.emit('dispenserState', {'state': dispenserState, 'order': dispenserDrinkOrder})
     
 @bus.on('barbot:pumpSetup')
 def _bus_pumpSetup(pumpSetup, singleClient = False):
@@ -161,14 +166,6 @@ def _bus_parentalLock(locked, singleClient = False):
     else:
         socket.emit('parentalLock', locked)
 
-@bus.on('barbot:drinkOrderStarted')
-def _bus_drinkOrderStarted(o):
-    socket.emit('dispensingDrinkOrder', o.to_dict(drink = True))
-    
-@bus.on('barbot:drinkOrderCompleted')
-def _bus_drinkOrderCompleted(o):
-    socket.emit('drinkOrderCompleted', o.to_dict(drink = True))
-    
 @bus.on('config:reloaded')
 def _but_configReloaded():
     socket.emit('clientOptions', getClientOptions())

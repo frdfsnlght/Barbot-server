@@ -21,7 +21,10 @@ def _bus_serverStart():
         logger.warning('There are no user\'s in the database!')
         user = User.addUser('admin', 'Administrator', None, isAdmin = True)
         logger.warning('Added "admin" user with empty password! Please set a password ASAP!')
-    
+    else:
+        admin = User.get_or_none(User.isAdmin == True)
+        if not admin:
+            logger.warning('There must be at least one admin user! Please add one!')
 
 class User(BarbotModel):
     name = CharField(unique = True)

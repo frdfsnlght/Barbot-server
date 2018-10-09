@@ -11,6 +11,7 @@ from .socket import socket
 wpaSupplicantNetworkBeginPattern    = re.compile(r"\s*network\s*=\s*\{")
 wpaSupplicantNetworkEndPattern      = re.compile(r"\s*\}")
 wpaSupplicantNetworkSSIDPattern     = re.compile(r"\s*ssid\s*=\s*\"(.+)\"")
+wpaSupplicantNetworkPSKPattern      = re.compile(r"\s*psk\s*=\s*\"(.+)\"")
 
 wifiStatePattern = re.compile(r"(?i)(?s)SSID:\"([^\"]+)\".*Link Quality=(\d+)/(\d+).*Signal level=(\-?\d+)")
 wifiNetworkCellPattern = re.compile(r"(?i)(?s)Quality=(\d+)/(\d+).*Signal level=(\-?\d+).*SSID:\"([^\"]+)\".*Authentication Suites.*?: ([\w ]+)")
@@ -20,6 +21,7 @@ logger = logging.getLogger('Wifi')
 exitEvent = Event()
 thread = None
 state = False
+scannedNetworks = []
 wpaSupplicantHeader = []
 wpaSupplicantNetworks = []
 
@@ -39,23 +41,22 @@ def _startThread():
     if not config.getint('wifi', 'checkInterval'):
         logging.info('Wifi checking disabled')
         return
-    state = getState()
+    state = _getState()
     if not state:
         logging.info('Wifi not available')
         return
-    
-    _readWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
     
     thread = Thread(target = _threadLoop, name = 'WifiThread')
     thread.daemon = True
     thread.start()
 
 def _threadLoop():
-    global state
+    global state, scannedNetworks
     logger.info('Wifi thread started')
     while not exitEvent.is_set():
-        state = getState()
-        socket.emit('wifiState', state)  # broadcast by default
+        state = _getState()
+        socket.emit('wifiState', state)
+        _readWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
         exitEvent.wait(config.getint('wifi', 'checkInterval'))
     logger.info('Wifi thread stopped')
     
@@ -79,10 +80,14 @@ def _readWPASupplicant(path):
                 m = wpaSupplicantNetworkSSIDPattern.match(line)
                 if m:
                     network['ssid'] = m.group(1)
+                m = wpaSupplicantNetworkPSKPattern.match(line)
+                if m:
+                    network['secured'] = True
                 network['content'].append(line)
             elif wpaSupplicantNetworkBeginPattern.match(line):
                 network = {
                     'ssid': None,
+                    'secured': False,
                     'content': []
                 }
             elif line:
@@ -96,20 +101,37 @@ def _writeWPASupplicant(path):
             for line in wpaSupplicantHeader:
                 f.write(line + '\n')
             for network in wpaSupplicantNetworks:
-                f.write('network {\n')
+                f.write('network={\n')
                 for line in network['content']:
                     f.write(line + '\n')
                 f.write('}\n')
     except IOError as e:
         logger.error(e)
     
-def getState():
+def _getSavedNetwork(ssid):
+    for network in wpaSupplicantNetworks:
+        if network['ssid'] == ssid:
+            return network
+    return None
+    
+def _getScannedNetwork(ssid):
+    for network in scannedNetworks:
+        if network['ssid'] == ssid:
+            return network
+    return None
+    
+def _getState():
+    #-------------------------------------
+    # TODO: remove test code someday
     return {
         'ssid': 'Bennedum',
         'quality': '40/70',
         'signal': -50,
         'bars': 3,
+        'connected': True
     }
+    # end test code
+    #-------------------------------------
 
     try:
         out = subprocess.run(['iwconfig', config.get('wifi', 'interface')],
@@ -133,38 +155,36 @@ def getState():
         'ssid': m.group(1),
         'quality': m.group(2) + '/' + m.group(3),
         'signal': int(m.group(4)),
-        'bars': int(4.9 * float(m.group(2)) / float(m.group(3)))
+        'bars': int(4.9 * float(m.group(2)) / float(m.group(3))),
+        'connected': True
     }
     return state
 
-def getNetworks():
-    networks = {}
-    
-    # add saved networks
-    for n in wpaSupplicantNetworks:
-        if state and state['ssid'] == n['ssid']:
-            network = {**state}
-            network['saved'] = True
-            network['connected'] = True
-        else:
-            network = {
-                'ssid': n['ssid'],
-                'saved': True,
-            }
-        networks[network['ssid']] = network
+def _scanNetworks():
+    networks = []
     
     #-------------------------------------
     # TODO: remove test code someday
-    
-    networks['Fake scanned network'] = {
+    network = {
         'ssid': 'Fake scanned network',
         'quality': '40/70',
         'signal': -50,
         'bars': 2,
         'auth': ['WPA2 PSK'],
         'scanned': True,
+        'secured': True,
     }
-
+    networks.append(network)
+    network = {
+        'ssid': 'Bennedum',
+        'quality': '40/70',
+        'signal': -50,
+        'bars': 3,
+        'auth': ['WPA2 PSK'],
+        'scanned': True,
+        'secured': True,
+    }
+    networks.append(network)
     # end test code
     #-------------------------------------
 
@@ -182,45 +202,107 @@ def getNetworks():
                         'bars': int(4.9 * float(m.group(1)) / float(m.group(2))),
                         'scanned': True,
                     }
-                    network['connected'] = state and state['ssid'] == network['ssid']
-                    if network['ssid'] in networks:
-                        networks[network['ssid']] = {**network, **networks[network['ssid']]}
-                    else:
-                        networks[network['ssid']] = network
-                
+                    network['secured'] = len(network['auth']) > 0
+                    networks.append(network)
+        else:
+            logger.error('Got return status of {} while scanning for wifi networks: {}'.format(out.returncode, out.stdout.strip()))
     except IOError as e:
         logger.error(e)
         
-    return list(networks.values())
+    return networks
 
-def connectToNetwork(ssid, psk):
-    # if it's saved and no psk is provided: move to top, write/reconfigure
-    # if it's saved and psk is provided: replace, move to top, write/reconfigure
-    # if it's not saved: save, move to top, write/reconfigure
-    # TODO: wpa_cli -i <int> reconfigure
-    pass
+def getNetworks():
+    global scannedNetworks
     
-def disconnectFromNetwork():
+    scannedNetworks = _scanNetworks()
+    
+    networks = {}
+    
+    # start with saved networks
+    for n in wpaSupplicantNetworks:
+        network = {
+            'ssid': n['ssid'],
+            'saved': True,
+            'secured': n['secured'],
+        }
+        networks[network['ssid']] = network
+    
+    # merge in scanned networks
+    for network in scannedNetworks:
+        if network['ssid'] in networks:
+            networks[network['ssid']] = {**network, **networks[network['ssid']]}
+        else:
+            networks[network['ssid']] = network
+
+    # merge in connected network
+    if state and state['ssid']:
+        if state['ssid'] in networks:
+            networks[state['ssid']] = {**state, **networks[network['ssid']]}
+        else:
+            networks[state['ssid']] = state
+            
+    return list(networks.values())
+    
+@bus.on('wifi:connectToNetwork')
+def _bus_connectToNetwork(params):
+    global state
+    network = _getSavedNetwork(params['ssid'])
+    if network:
+        wpaSupplicantNetworks.remove(network)
+    else:
+        network = {
+            'ssid': params['ssid'],
+            'content': [
+                '  ssid="{}"'.format(params['ssid']),
+            ]
+        }
+        if 'password' in params:
+            network['content'].append('  psk="{}"'.format(params['password']))
+            network['secured'] = True
+        else:
+            network['content'].append('  key_mgmt=NONE')
+            network['secured'] = False
+        
+        if not _getScannedNetwork(params['ssid']):
+            network['content'].append('  scan_ssid=1')
+            
+        logger.info('Saved wifi network "{}"'.format(network['ssid']))
+
+    # add it to the head of the list
+    wpaSupplicantNetworks[:0] = [network]
+    
+    _writeWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
+    try:
+        out = subprocess.run(['wpa_cli', '-i', config.get('wifi', 'interface'), 'reconfigure'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
+        if out.returncode != 0:
+            logger.error('Got return status of {} while trying to connect to wifi network: {}'.format(out.returncode, out.stdout.strip()))
+        logger.info('Reconfigured wifi to connect to network "{}"'.format(network['ssid']))
+    except IOError as e:
+        logger.error(e)
+    state = _getState()
+    socket.emit('wifiState', state)
+    
+@bus.on('wifi:disconnectFromNetwork')
+def _bus_disconnectFromNetwork(ssid):
+    global state
     if state and state['ssid'] == ssid:
         try:
             out = subprocess.run(['wpa_cli', '-i', config.get('wifi', 'interface'), 'disconnect'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
             if out.returncode != 0:
-                logger.error('Got return status of {} while trying to disconnect from wifi network: {}'.format(out.returncode, out.stdout))
+                logger.error('Got return status of {} while trying to disconnect from wifi network: {}'.format(out.returncode, out.stdout.strip()))
+            logger.info('Disconnected from wifi network "{}"'.format(ssid))
         except IOError as e:
             logger.error(e)
+        state = _getState()
+        socket.emit('wifiState', state)    
 
-def forgetNetwork(ssid):
-    global wpaSupplicantNetworks
-    if state and state['ssid'] == ssid:
-        disconnectFromNetwork()
-    wpaSupplicantNetworks = [n for n in wpaSupplicantNetworks if n['ssid'] != ssid]
-    _writeWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
+@bus.on('wifi:forgetNetwork')
+def _bus_forgetNetwork(ssid):
+    _bus_disconnectFromNetwork(ssid)
+    network = _getSavedNetwork(ssid)
+    if network:
+        wpaSupplicantNetworks.remove(network)
+        _writeWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
+        logger.info('Removed saved wifi network "{}"'.format(ssid))
 
-    
-# iwconfig
-# iwgetid
-# iwlist
-    
-# https://raspberrypi.stackexchange.com/questions/69084/wi-fi-scanning-and-displaying-using-python-run-by-php
-    
     

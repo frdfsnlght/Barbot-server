@@ -189,7 +189,7 @@ class Pump(BarbotModel):
     def prime(self, amount, useThread = False):
         if self.state == Pump.LOADED or self.state == Pump.READY:
             if useThread:
-                threading.Thread(target = self.forward, name = 'PumpThread', args = [amount], daemon = True).start()
+                self.forwardAsync(amount)
             else:
                 self.forward(amount)
             if self.state != Pump.READY:
@@ -201,9 +201,9 @@ class Pump(BarbotModel):
     def drain(self, amount, useThread = False):
         if self.state == Pump.READY or self.state == Pump.EMPTY or self.state == Pump.UNUSED or self.state == Pump.DIRTY:
             if useThread:
-                threading.Thread(target = self.reverse, name = 'PumpThread', args = [amount], daemon = True).start()
+                self.reverseAsync(amount)
             else:
-                self.reverse(amount)
+                self.reverseAsync(amount)
             if self.state != Pump.UNUSED:
                 self.state = Pump.DIRTY
             self.ingredient = None
@@ -217,13 +217,19 @@ class Pump(BarbotModel):
     def clean(self, amount, useThread = False):
         if self.state == Pump.DIRTY or self.state == Pump.UNUSED:
             if useThread:
-                threading.Thread(target = self.forward, name = 'PumpThread', args = [amount], daemon = True).start()
+                self.forwardAsync(amount)
             else:
                 self.forward(amount)
             self.state = Pump.UNUSED
             self.save()
         else:
             raise ModelError('Invalid pump state!')
+
+    def forwardAsync(self, amount):
+        threading.Thread(target = self.forward, name = 'PumpThread-{}'.format(self.id), args = [amount], daemon = True).start()
+    
+    def reverseAsync(self, amount):
+        threading.Thread(target = self.reverse, name = 'PumpThread-{}'.format(self.id), args = [amount], daemon = True).start()
     
     # amount is ml!
     def forward(self, amount):
@@ -257,7 +263,6 @@ class Pump(BarbotModel):
     def reverse(self, amount):
         amount = float(amount)
         logger.info('Pump {} reverse {} ml'.format(self.name(), amount))
-        
 
         with self.lock:
             try:

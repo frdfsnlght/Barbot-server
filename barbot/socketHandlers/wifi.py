@@ -16,25 +16,19 @@ def _socket_getWifiNetworks():
     return success(networks = wifi.getNetworks())
     
 @socket.on('connectToWifiNetwork')
-def _socket_connectToWifiNetwork(ssid, password):
-    logger.info('connectToWifiNetwork {}'.format(ssid))
-    try:
-        wifi.connectToNetwork(ssid, password)
-        return success()
-    except Exception as e:
-        return error(e)
+def _socket_connectToWifiNetwork(params):
+    logger.info('connectToWifiNetwork {}'.format(params))
+    bus.emit('wifi:connectToNetwork', params)
+    return success()
     
 @socket.on('disconnectFromWifiNetwork')
 def _socket_disconnectFromWifiNetwork(ssid):
     logger.info('disconnectFromWifiNetwork {}'.format(ssid))
-    try:
-        wifi.disconnectFromNetwork(ssid)
-        return success()
-    except Exception as e:
-        return error(e)
+    bus.emit('wifi:disconnectFromNetwork', ssid)
+    return success()
     
-
-
-#@bus.on('wifi:pump:saved')
-#def _bus_modelPumpSaved(p):
-#    socket.emit('pumpSaved', p.to_dict(ingredient = True))
+@socket.on('forgetWifiNetwork')
+def _socket_forgetWifiNetwork(ssid):
+    logger.info('forgetWifiNetwork {}'.format(ssid))
+    bus.emit('wifi:forgetNetwork', ssid)
+    return success()

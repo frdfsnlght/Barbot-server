@@ -27,6 +27,5 @@ Barbot's server.
 # refactor code
 
 * make sure disconnected wifi always tries to reconnect
-* figure out how to do wifi properly
 
 * BRING HOME ACCESS POINT!

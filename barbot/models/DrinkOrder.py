@@ -80,7 +80,7 @@ class DrinkOrder(BarbotModel):
         if 'userHold' in dict:
             self.userHold = bool(dict['userHold'])
     
-    def to_dict(self, drink = False):
+    def to_dict(self, drink = False, glass = False):
         out = {
             'id': self.id,
             'drinkId': self.drink.id,
@@ -92,7 +92,7 @@ class DrinkOrder(BarbotModel):
             'userHold': self.userHold,
         }
         if drink:
-            out['drink'] = self.drink.to_dict()
+            out['drink'] = self.drink.to_dict(glass = glass)
         return out
         
     class Meta:

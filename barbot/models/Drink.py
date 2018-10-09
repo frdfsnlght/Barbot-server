@@ -51,6 +51,8 @@ class Drink(BarbotModel):
         d.delete_instance()
     
     def save(self, emitEvent = True, *args, **kwargs):
+        if not self.isFavorite and self.timesDispensed >= config.getint('barbot', 'favoriteDrinkCount'):
+            self.isFavorite
         if self.is_dirty():
             self.updatedDate = datetime.datetime.now()
         if super().save(*args, **kwargs):
