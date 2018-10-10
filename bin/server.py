@@ -25,12 +25,13 @@ from barbot.db import db, models, ModelError
 from barbot.app import app
 from barbot.socket import socket
 
+import barbot.serial
 import barbot.barbot
 import barbot.models
 from barbot.models.User import User
 import barbot.wifi
-import barbot.pumps
-import barbot.serial
+import barbot.lights
+import barbot.audio
 
 import barbot.appHandlers
 import barbot.socketHandlers

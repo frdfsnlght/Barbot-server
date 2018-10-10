@@ -1,10 +1,12 @@
 
-import os, configparser
+import os, configparser, logging
 from threading import Thread, Event
 
 from . import paths
 from .bus import bus
 
+
+logger = logging.getLogger('Config')
 config = None
 exitEvent = Event()
 thread = None
@@ -30,13 +32,14 @@ def _bus_serverStop():
 def _threadLoop():
     global lastModifiedTime
     while not exitEvent.is_set():
-        exitEvent.wait(config.getint('server', 'configCheckInterval'))
+        exitEvent.wait(config.getfloat('server', 'configCheckInterval'))
         newTime = max(os.stat(defaultConfig).st_mtime, os.stat(localConfig).st_mtime)
         if newTime > lastModifiedTime:
             lastModifiedTime = newTime
             config.read(defaultConfig)
             config.read(localConfig)
             bus.emit('config:reloaded')
+            logger.info('Configuration reloaded')
     
 def load():
     global config, lastModifiedTime
@@ -60,5 +63,6 @@ def resolvePath(str):
     str = str.replace('!etc', paths.ETC_DIR)
     str = str.replace('!var', paths.VAR_DIR)
     str = str.replace('!content', paths.CONTENT_DIR)
+    str = str.replace('!audio', paths.AUDIO_DIR)
     return str
         

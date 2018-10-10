@@ -6,3 +6,4 @@ BIN_DIR = os.path.join(ROOT_DIR, 'bin')
 ETC_DIR = os.path.join(ROOT_DIR, 'etc')
 VAR_DIR = os.path.join(ROOT_DIR, 'var')
 CONTENT_DIR = os.path.join(ROOT_DIR, 'content');
+AUDIO_DIR = os.path.join(ROOT_DIR, 'audio');

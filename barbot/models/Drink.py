@@ -4,6 +4,7 @@ from peewee import *
 
 from ..db import db, BarbotModel, ModelError, addModel
 from ..bus import bus
+from ..config import config
 from .Glass import Glass
 
 

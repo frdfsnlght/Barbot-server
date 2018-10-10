@@ -41,7 +41,12 @@ def _bus_serialEvent(e):
                 pump.save()
                 logger.info('Pump {} stopped'.format(pump.name()))
 
-            
+def anyPumpsRunning():
+    for i, p in pumpExtras.items():
+        if p.running:
+            return True
+    return False
+    
 class PumpExtra(object):
     allAttributes = ['volume', 'running', 'previousState', 'lock']
     dirtyAttributes = ['running']
@@ -282,6 +287,17 @@ class Pump(BarbotModel):
         #self.running = False
         #self.save()
         #logger.info('Pump {} stopped'.format(self.name()))
+    
+    def stop(self):
+        logger.info('Pump {} stop'.format(self.name(), amount))
+
+        with self.lock:
+            try:
+                serial.write('PS,{}'.format(self.id - 1))
+                self.running = False
+                self.save()
+            except serial.SerialError as e:
+                logger.error('Pump error: {}'.format(str(e)))
     
     def name(self):
         return '#' + str(self.id)

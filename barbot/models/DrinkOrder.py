@@ -11,6 +11,10 @@ from .Drink import Drink
 logger = logging.getLogger('Models.DrinkOrder')
 
 
+@bus.on('server:start')
+def _bus_serverStart():
+    DrinkOrder.clearSessionIds()
+    
 class DrinkOrder(BarbotModel):
     drink = ForeignKeyField(Drink, backref = 'orders')
     name = CharField(null = True)
@@ -19,6 +23,7 @@ class DrinkOrder(BarbotModel):
     completedDate = DateTimeField(null = True)
     ingredientHold = BooleanField(default = False)
     userHold = BooleanField(default = False)
+    sessionId = CharField(null = True)
     
     @staticmethod
     def getFirstPending():
@@ -46,21 +51,28 @@ class DrinkOrder(BarbotModel):
             logger.info('deleted ' + str(num) + ' old drink orders')
         
     @staticmethod
-    def submit_from_dict(item):
+    def clearSessionIds():
+        DrinkOrder.update(sessionId = None).execute()
+        
+    @staticmethod
+    def submitFromDict(item):
         o = DrinkOrder()
         o.set(item)
         o.save()
+        return o
         
     @staticmethod
-    def cancel_by_id(id):
+    def cancelById(id):
         o = DrinkOrder.get(DrinkOrder.id == id, DrinkOrder.startedDate.is_null())
         o.delete_instance()
-
+        return o
+        
     @staticmethod
-    def toggle_hold_by_id(id):
+    def toggleHoldById(id):
         o = DrinkOrder.get(DrinkOrder.id == id, DrinkOrder.startedDate.is_null())
         o.userHold = not o.userHold
         o.save()
+        return o
 
     def save(self, *args, **kwargs):
         if super().save(*args, **kwargs):
@@ -70,6 +82,14 @@ class DrinkOrder(BarbotModel):
         super().delete_instance(*args, **kwargs)
         bus.emit('model:drinkOrder:deleted', self)
             
+    def place_on_hold(self):
+        self.startedDate = None
+        self.userHold = True
+        self.save()
+        
+    def desc(self):
+        return '"{}" for {}'.format(self.drink.name(), self.name if self.name else 'unknown')
+        
     def set(self, dict):
         if 'drink' in dict:
             self.drink = dict['drink']
@@ -79,6 +99,8 @@ class DrinkOrder(BarbotModel):
             self.name = str(dict['name'])
         if 'userHold' in dict:
             self.userHold = bool(dict['userHold'])
+        if 'sessionId' in dict:
+            self.sessionId = str(dict['sessionId'])
     
     def to_dict(self, drink = False, glass = False):
         out = {

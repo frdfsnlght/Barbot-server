@@ -85,13 +85,14 @@ def _processLine(line):
     
 def write(line):
     global responseLines, responseError
-    if not port:
-        raise SerialError('serial port is not open')
     with writeLock:
+        logger.debug('Sending: {}'.format(line))
+        if not port:
+            raise SerialError('serial port is not open')
         responseLines = []
         responseError = None
         responseReceived.clear()
-        port.write((line + '\n').encode('ascii'))
+        port.write((line + '\r\n').encode('ascii'))
         responseReceived.wait()
         if responseError:
             raise SerialError(responseError)

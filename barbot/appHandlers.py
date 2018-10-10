@@ -29,6 +29,10 @@ def send_img(path):
 def send_favicon(path):
     return send_from_directory(paths.CONTENT_DIR + '/favicon', path)
 
+@app.route('/audio/<path:path>')
+def send_audio(path):
+    return send_from_directory(paths.AUDIO_DIR, path)
+
 @app.route('/', defaults = { 'path': '/'})
 @app.route('/<path:path>')
 def index(path):

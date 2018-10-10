@@ -9,4 +9,9 @@ var/glass
 var/parentalCode
 etc/config.ini
 content
+audio/clips.ini
+audio/*.mp3
+audio/*.wav
+audio/*.ogg
+
 

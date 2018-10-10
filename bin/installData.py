@@ -56,21 +56,25 @@ ingredients = [
     ('Lemon Juice', False),
     ('Cranberry Juice', False),
     ('Sugar Syrup', False),
+    ('Water', False),
 ]
 
 Ingredient.insert_many(ingredients, fields=[Ingredient.name, Ingredient.isAlcoholic]).execute()
 i1 = Ingredient.get(Ingredient.name == 'Spiced Rum')
 i2 = Ingredient.get(Ingredient.name == 'Light Rum')
 i3 = Ingredient.get(Ingredient.name == 'Coca Cola')
+i4 = Ingredient.get(Ingredient.name == 'Water')
 
 drinks = [
     ('Rum and Coke', 'Traditional', '', True, g1),
     ('Rum and Coke', 'Tab\'s Standard', '', True, g2),
+    ('Water', None, '', False, g1),
 ]
 
 Drink.insert_many(drinks, fields=[Drink.primaryName, Drink.secondaryName, Drink.instructions, Drink.isAlcoholic, Drink.glass]).execute()
 d1 = Drink.get(Drink.primaryName == 'Rum and Coke' and Drink.secondaryName == 'Traditional')
 d2 = Drink.get(Drink.primaryName == 'Rum and Coke' and Drink.secondaryName == 'Tab\'s Standard')
+d3 = Drink.get(Drink.primaryName == 'Water' and Drink.secondaryName.is_null())
 d2.isFavorite = True
 d2.save()
 
@@ -79,6 +83,7 @@ drinkIngredients = [
     (d1, i3, 4, 'oz', 2),
     (d2, i1, 2, 'oz', 1),
     (d2, i3, 6, 'oz', 2),
+    (d3, i4, 8, 'oz', 1),
 ]
 
 DrinkIngredient.insert_many(drinkIngredients, fields=[DrinkIngredient.drink, DrinkIngredient.ingredient, DrinkIngredient.amount, DrinkIngredient.units, DrinkIngredient.step]).execute()

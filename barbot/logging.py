@@ -2,11 +2,16 @@
 import logging, logging.handlers, re
 
 from .config import config
+from .bus import bus
 
 
 levelPattern = re.compile(r"^level\.(.*)")
 
 
+@bus.on('config:reloaded')
+def _bus_configReloaded():
+    _setLoggingLevels()
+    
 def configure(console = False):
     #config = config['logging']
     root = logging.getLogger()
@@ -25,6 +30,9 @@ def configure(console = False):
         handler.setFormatter(logging.Formatter(fmt = config.get('logging', 'logFormat')))
         root.addHandler(handler)
 
+    _setLoggingLevels()
+    
+def _setLoggingLevels():
     for (k, v) in config.items('logging'):
         m = levelPattern.match(k)
         if m:
