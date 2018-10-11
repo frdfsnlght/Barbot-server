@@ -27,4 +27,10 @@ Barbot's server.
 * explicity check for integrity errors before they happen
 * change 'content' directory to symlink to 'client/dist'
 * different events for non/alcoholic
+* add client request to socket_connect event handlers
+* audio should listen for client connect and take sessionId of first localhost connection to use for 'local' audio
+* move 'RO' command out of lights module, maybe in serial module?
+* test on phone screen
+
+* barbot controls not usable unless console
 

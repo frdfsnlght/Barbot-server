@@ -8,7 +8,7 @@ from .bus import bus
 
 commentPattern = re.compile(r"#(.*)")
 errorPattern = re.compile(r"!(.*)")
-eventPattern = re.compile(r"~(.*)")
+eventPattern = re.compile(r"\*(.*)")
 
 logger = logging.getLogger('Serial')
 exitEvent = Event()
@@ -83,7 +83,7 @@ def _processLine(line):
         
     responseLines.append(line)
     
-def write(line):
+def write(line, timeout = 5):
     global responseLines, responseError
     with writeLock:
         logger.debug('Sending: {}'.format(line))
@@ -93,7 +93,11 @@ def write(line):
         responseError = None
         responseReceived.clear()
         port.write((line + '\r\n').encode('ascii'))
-        responseReceived.wait()
+        if timeout:
+            if not responseReceived.wait(timeout):
+                responseError = 'timeout'
+        else:
+            responseReceived.wait()
         if responseError:
             raise SerialError(responseError)
         return responseLines

@@ -57,7 +57,7 @@ def _bus_serverStop():
     exitEvent.set()
     
 @bus.on('client:connect')
-def _bus_clientConnect():
+def _bus_clientConnect(request):
     bus.emit('barbot:dispenserHold', dispenserHold, singleClient = True)
     bus.emit('barbot:pumpSetup', pumpSetup, singleClient = True)
     bus.emit('barbot:glassReady', glassReady, singleClient = True)

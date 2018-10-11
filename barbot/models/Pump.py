@@ -243,7 +243,7 @@ class Pump(BarbotModel):
         
         with self.lock:
             try:
-                serial.write('PP,{},{},{},{}'.format(
+                serial.write('PP{},{},{},{}'.format(
                     self.id - 1,
                     int(amount * config.getfloat('pumps', 'stepsPerML')),
                     config.getint('pumps', 'speed'),
@@ -271,7 +271,7 @@ class Pump(BarbotModel):
 
         with self.lock:
             try:
-                serial.write('PP,{},{},{},{}'.format(
+                serial.write('PP{},{},{},{}'.format(
                     self.id - 1,
                     -int(amount * config.getfloat('pumps', 'stepsPerML')),
                     config.getint('pumps', 'speed'),
@@ -293,7 +293,7 @@ class Pump(BarbotModel):
 
         with self.lock:
             try:
-                serial.write('PS,{}'.format(self.id - 1))
+                serial.write('PH{}'.format(self.id - 1))
                 self.running = False
                 self.save()
             except serial.SerialError as e:

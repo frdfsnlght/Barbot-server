@@ -31,12 +31,12 @@ def _socket_default_error_handler(e):
 def _socket_connect():
     logger.info('Connection opened from ' + request.remote_addr)
     emit('clientOptions', getClientOptions())
-    bus.emit('client:connect')
+    bus.emit('client:connect', request)
 
 @socket.on('disconnect')
 def _socket_disconnect():
     logger.info('Connection closed from ' + request.remote_addr)
-    bus.emit('client:disconnect')
+    bus.emit('client:disconnect', request)
 
 @socket.on('login')
 def _socket_login(params):

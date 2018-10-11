@@ -4,6 +4,7 @@ from threading import Thread, Event
 from queue import LifoQueue, Empty
 
 from . import paths
+from .socket import socket
 from .bus import bus
 from .config import config
 
@@ -15,6 +16,8 @@ thread = None
 lastModifiedTime = None
 playQueue = LifoQueue()
 started = False
+consoleSessionId = None
+clips = {}
 
 
 @bus.on('server:start')
@@ -36,11 +39,17 @@ def _bus_serverStop():
     exitEvent.set()
 
 @bus.on('client:connect')
-def _bus_clientConnect():
-    global started
-    if not started:
-        started = True
-        bus.emit('audio:play', 'startup', remote = False)
+def _bus_clientConnect(request):
+    global consoleSessionId
+    if not consoleSessionId and request.remote_addr == '127.0.0.1':
+        consoleSessionId = request.sid
+        bus.emit('audio:play', 'startup', sessionId = consoleSessionId)
+
+@bus.on('client:disconnect')
+def _bus_clientDisconnect(request):
+    global consoleSessionId
+    if consoleSessionId and request.sid == consoleSessionId:
+        consoleSessionId = None
 
 @bus.on('barbot:restart')
 def _bus_barbotRestart():
@@ -51,15 +60,15 @@ def _bus_barbotShutdown():
     bus.emit('audio:play', 'barbot:shutdown')
 
 @bus.on('barbot:drinkOrderSubmitted')
-def _bus_barbotDrinkOrderSubmitted():
+def _bus_barbotDrinkOrderSubmitted(o):
     bus.emit('audio:play', 'barbot:drinkOrderSubmitted', remote = True)
 
 @bus.on('barbot:drinkOrderCancelled')
-def _bus_barbotDrinkOrderCancelled():
+def _bus_barbotDrinkOrderCancelled(o):
     bus.emit('audio:play', 'barbot:drinkOrderCancelled', remote = True)
     
 @bus.on('barbot:drinkOrderHoldToggled')
-def _bus_barbotDrinkOrderHoldToggled():
+def _bus_barbotDrinkOrderHoldToggled(o):
     bus.emit('audio:play', 'barbot:drinkOrderHoldToggled', remote = True)
 
 @bus.on('barbot:dispenseState')
@@ -80,10 +89,10 @@ def _threadLoop():
             _checkClipsFile()
 
 @bus.on('audio:play')
-def _on_audioPlay(clip, remote = False):
+def _on_audioPlay(clip, sessionId = False):
     playQueue.put_nowait({
         'clip': clip,
-        'remote': remote
+        'sessionId': sessionId,
     })
     
 def _load():
@@ -124,20 +133,26 @@ def _playClip(item):
     r = random.random()
     for file in clip:
         if r < file[1]:
-            _playFile(file[0], item['remote'])
+            _playFile(file[0], item['sessionId'])
             return
     logger.error('No file found for {}: r={} !'.format(item['clip'], r))
             
-def _playFile(file, remote = False):
-    logger.debug('Play {} {}'.format(file, 'remotely' if remote else 'locally'))
-    fullPath = os.path.join(paths.AUDIO_DIR, file)
-    try:
-        out = subprocess.run(['aplay', fullPath],
-            stdout = subprocess.PIPE,
-            stderr = subprocess.STDOUT,
-            universal_newlines = True)
-    except IOError as e:
-        logger.error(e)
-    if out.returncode != 0:
-        logger.error('Got return status of {} while playing file {}: {}'.format(out.returncode, fullPath, out.stdout.strip()))
+def _playFile(file, sessionId = False):
+    logger.debug('Play {} {}'.format(file, sessionId if sessionId else 'broadcast'))
+
+    if sessionId:
+        socket.emit('playAudio', file, room = sessionId)
+    else:
+        socket.emit('playAudio', file)
+    
+#    fullPath = os.path.join(paths.AUDIO_DIR, file)
+#    try:
+#        out = subprocess.run(['aplay', fullPath],
+#            stdout = subprocess.PIPE,
+#            stderr = subprocess.STDOUT,
+#            universal_newlines = True)
+#    except IOError as e:
+#        logger.error(e)
+#    if out.returncode != 0:
+#        logger.error('Got return status of {} while playing file {}: {}'.format(out.returncode, fullPath, out.stdout.strip()))
     

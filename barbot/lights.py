@@ -29,14 +29,15 @@ started = False
 def _bus_serverStart():
     savePattern(0, config.get('lights', 'startupPattern'))
     savePattern(1, config.get('lights', 'shutdownPattern'))
-    
+
+# TODO: move this somewhere else    
 @bus.on('client:connect')
-def _bus_clientConnect():
+def _bus_clientConnect(request):
     global started
-    if not started:
+    if not started and request.remote_addr == '127.0.0.1':
         started = True
         try:
-            serial.write('RO')  # power on, turn of lights
+            serial.write('RO', 1)  # power on, turn of lights
         except serial.SerialError as e:
             logger.error('Lights error: {}'.format(str(e)))
         

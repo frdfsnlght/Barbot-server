@@ -31,7 +31,7 @@ def _bus_serverStop():
     exitEvent.set()
     
 @bus.on('client:connect')
-def _bus_clientConnect():
+def _bus_clientConnect(request):
     emit('wifiState', state)
     
 @bus.on('server:start')
