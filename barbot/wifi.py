@@ -6,32 +6,32 @@ from .config import config
 from .bus import bus
 
 
-wpaSupplicantNetworkBeginPattern    = re.compile(r"\s*network\s*=\s*\{")
-wpaSupplicantNetworkEndPattern      = re.compile(r"\s*\}")
-wpaSupplicantNetworkSSIDPattern     = re.compile(r"\s*ssid\s*=\s*\"(.+)\"")
-wpaSupplicantNetworkPSKPattern      = re.compile(r"\s*psk\s*=\s*\"(.+)\"")
+_wpaSupplicantNetworkBeginPattern    = re.compile(r"\s*network\s*=\s*\{")
+_wpaSupplicantNetworkEndPattern      = re.compile(r"\s*\}")
+_wpaSupplicantNetworkSSIDPattern     = re.compile(r"\s*ssid\s*=\s*\"(.+)\"")
+_wpaSupplicantNetworkPSKPattern      = re.compile(r"\s*psk\s*=\s*\"(.+)\"")
 
-wifiStatePattern = re.compile(r"(?i)(?s)SSID:\"([^\"]+)\".*Link Quality=(\d+)/(\d+).*Signal level=(\-?\d+)")
-wifiNetworkCellPattern = re.compile(r"(?i)(?s)Quality=(\d+)/(\d+).*Signal level=(\-?\d+).*SSID:\"([^\"]+)\".*Authentication Suites.*?: ([\w ]+)")
+_wifiStatePattern = re.compile(r"(?i)(?s)SSID:\"([^\"]+)\".*Link Quality=(\d+)/(\d+).*Signal level=(\-?\d+)")
+_wifiNetworkCellPattern = re.compile(r"(?i)(?s)Quality=(\d+)/(\d+).*Signal level=(\-?\d+).*SSID:\"([^\"]+)\".*Authentication Suites.*?: ([\w ]+)")
 
 
-logger = logging.getLogger('Wifi')
-exitEvent = Event()
-thread = None
 state = False
-scannedNetworks = []
-wpaSupplicantHeader = []
-wpaSupplicantNetworks = []
+_logger = logging.getLogger('Wifi')
+_exitEvent = Event()
+_thread = None
+_scannedNetworks = []
+_wpaSupplicantHeader = []
+_wpaSupplicantNetworks = []
 
 
-@bus.on('server:stop')
+@bus.on('server/stop')
 def _bus_serverStop():
-    exitEvent.set()
+    _exitEvent.set()
     
-@bus.on('server:start')
+@bus.on('server/start')
 def _startThread():
-    global thread, state
-    exitEvent.clear()
+    global _thread, state
+    _exitEvent.clear()
     if not config.getint('wifi', 'checkInterval'):
         logging.info('Wifi checking disabled')
         return
@@ -40,79 +40,90 @@ def _startThread():
         logging.info('Wifi not available')
         return
     
-    thread = Thread(target = _threadLoop, name = 'WifiThread')
-    thread.daemon = True
-    thread.start()
+    _thread = Thread(target = _threadLoop, name = 'WifiThread')
+    _thread.daemon = True
+    _thread.start()
 
 def _threadLoop():
-    global state, scannedNetworks
-    logger.info('Wifi thread started')
-    while not exitEvent.is_set():
-        state = _getState()
-        bus.emit('wifi:state', state)
+    _logger.info('Wifi thread started')
+    while not _exitEvent.is_set():
+        _updateState()
         _readWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
-        exitEvent.wait(config.getint('wifi', 'checkInterval'))
-    logger.info('Wifi thread stopped')
-    
-    
+        _exitEvent.wait(config.getint('wifi', 'checkInterval'))
+    _logger.info('Wifi thread stopped')
     
 def _readWPASupplicant(path):
-    global wpaSupplicantHeader, wpaSupplicantNetworks
-    wpaSupplicantHeader = []
-    wpaSupplicantNetworks = []
+    global _wpaSupplicantHeader, _wpaSupplicantNetworks
+    _wpaSupplicantHeader = []
+    _wpaSupplicantNetworks = []
     try:
         with open(path) as f:
             content = [line.rstrip() for line in f.readlines()]
         network = False
         for line in content:
             if type(network) is dict:
-                m = wpaSupplicantNetworkEndPattern.match(line)
+                m = _wpaSupplicantNetworkEndPattern.match(line)
                 if m:
-                    wpaSupplicantNetworks.append(network)
+                    _wpaSupplicantNetworks.append(network)
                     network = False
                     continue
-                m = wpaSupplicantNetworkSSIDPattern.match(line)
+                m = _wpaSupplicantNetworkSSIDPattern.match(line)
                 if m:
                     network['ssid'] = m.group(1)
-                m = wpaSupplicantNetworkPSKPattern.match(line)
+                m = _wpaSupplicantNetworkPSKPattern.match(line)
                 if m:
                     network['secured'] = True
                 network['content'].append(line)
-            elif wpaSupplicantNetworkBeginPattern.match(line):
+            elif _wpaSupplicantNetworkBeginPattern.match(line):
                 network = {
                     'ssid': None,
                     'secured': False,
                     'content': []
                 }
             elif line:
-                wpaSupplicantHeader.append(line)
+                _wpaSupplicantHeader.append(line)
     except FileNotFoundError:
         pass
     
 def _writeWPASupplicant(path):
     try:
         with open(path, 'w') as f:
-            for line in wpaSupplicantHeader:
+            for line in _wpaSupplicantHeader:
                 f.write(line + '\n')
-            for network in wpaSupplicantNetworks:
+            for network in _wpaSupplicantNetworks:
                 f.write('network={\n')
                 for line in network['content']:
                     f.write(line + '\n')
                 f.write('}\n')
     except IOError as e:
-        logger.error(e)
+        _logger.error(e)
     
 def _getSavedNetwork(ssid):
-    for network in wpaSupplicantNetworks:
+    for network in _wpaSupplicantNetworks:
         if network['ssid'] == ssid:
             return network
     return None
     
 def _getScannedNetwork(ssid):
-    for network in scannedNetworks:
+    for network in _scannedNetworks:
         if network['ssid'] == ssid:
             return network
     return None
+    
+def _updateState():
+    global state
+    s = _getState()
+    update = False
+
+    if (s and not state) or (not s and state):
+        update = True
+    elif s and state:
+        for k in ('ssid', 'quality', 'signal', 'bars'):
+            update = update or s[k] != state[k]
+    
+    if update:
+        state = s
+        bus.emit('wifi/state', state)
     
 def _getState():
     #-------------------------------------
@@ -133,16 +144,16 @@ def _getState():
             stderr = subprocess.STDOUT,
             universal_newlines = True)
     except IOError as e:
-        logger.error(e)
+        _logger.error(e)
         return False
     if out.returncode != 0:
         # interface not found 
         return False
-    m = wifiStatePattern.search(out.stdout)
+    m = _wifiStatePattern.search(out.stdout)
     if not m:
         # not connected
         return {
-            'ssid': False
+            'ssid': False,
         }
     # connected
     state = {
@@ -186,7 +197,7 @@ def _scanNetworks():
         out = subprocess.run(['sudo', 'iwlist', config.get('wifi', 'interface'), 'scan'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
         if out.returncode == 0:
             for cell in re.split(r"Cell ", out.stdout):
-                m = wifiNetworkCellPattern.search(cell)
+                m = _wifiNetworkCellPattern.search(cell)
                 if m:
                     network = {
                         'ssid': m.group(4).replace('\\x00', ''),
@@ -199,21 +210,21 @@ def _scanNetworks():
                     network['secured'] = len(network['auth']) > 0
                     networks.append(network)
         else:
-            logger.error('Got return status of {} while scanning for wifi networks: {}'.format(out.returncode, out.stdout.strip()))
+            _logger.error('Got return status of {} while scanning for wifi networks: {}'.format(out.returncode, out.stdout.strip()))
     except IOError as e:
-        logger.error(e)
+        _logger.error(e)
         
     return networks
 
 def getNetworks():
-    global scannedNetworks
+    global _scannedNetworks
     
-    scannedNetworks = _scanNetworks()
+    _scannedNetworks = _scanNetworks()
     
     networks = {}
     
     # start with saved networks
-    for n in wpaSupplicantNetworks:
+    for n in _wpaSupplicantNetworks:
         network = {
             'ssid': n['ssid'],
             'saved': True,
@@ -222,7 +233,7 @@ def getNetworks():
         networks[network['ssid']] = network
     
     # merge in scanned networks
-    for network in scannedNetworks:
+    for network in _scannedNetworks:
         if network['ssid'] in networks:
             networks[network['ssid']] = {**network, **networks[network['ssid']]}
         else:
@@ -237,12 +248,11 @@ def getNetworks():
             
     return list(networks.values())
     
-@bus.on('wifi:connectToNetwork')
-def _bus_connectToNetwork(params):
+def connectToNetwork(params):
     global state
     network = _getSavedNetwork(params['ssid'])
     if network:
-        wpaSupplicantNetworks.remove(network)
+        _wpaSupplicantNetworks.remove(network)
     else:
         network = {
             'ssid': params['ssid'],
@@ -263,21 +273,19 @@ def _bus_connectToNetwork(params):
         logger.info('Saved wifi network "{}"'.format(network['ssid']))
 
     # add it to the head of the list
-    wpaSupplicantNetworks[:0] = [network]
+    _wpaSupplicantNetworks[:0] = [network]
     
     _writeWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
     try:
         out = subprocess.run(['wpa_cli', '-i', config.get('wifi', 'interface'), 'reconfigure'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, universal_newlines = True)
         if out.returncode != 0:
-            logger.error('Got return status of {} while trying to connect to wifi network: {}'.format(out.returncode, out.stdout.strip()))
-        logger.info('Reconfigured wifi to connect to network "{}"'.format(network['ssid']))
+            _logger.error('Got return status of {} while trying to connect to wifi network: {}'.format(out.returncode, out.stdout.strip()))
+        _logger.info('Reconfigured wifi to connect to network "{}"'.format(network['ssid']))
     except IOError as e:
-        logger.error(e)
-    state = _getState()
-    bus.emit('wifi:state', state)
+        _logger.error(e)
+    _updateState()
 
-@bus.on('wifi:disconnectFromNetwork')
-def _bus_disconnectFromNetwork(ssid):
+def disconnectFromNetwork(ssid):
     global state
     if state and state['ssid'] == ssid:
         try:
@@ -287,16 +295,14 @@ def _bus_disconnectFromNetwork(ssid):
             logger.info('Disconnected from wifi network "{}"'.format(ssid))
         except IOError as e:
             logger.error(e)
-        state = _getState()
-        bus.emit('wifi:state', state)
+        _updateState()
 
-@bus.on('wifi:forgetNetwork')
-def _bus_forgetNetwork(ssid):
-    _bus_disconnectFromNetwork(ssid)
+def forgetNetwork(ssid):
+    disconnectFromNetwork(ssid)
     network = _getSavedNetwork(ssid)
     if network:
-        wpaSupplicantNetworks.remove(network)
+        _wpaSupplicantNetworks.remove(network)
         _writeWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
-        logger.info('Removed saved wifi network "{}"'.format(ssid))
+        _logger.info('Removed saved wifi network "{}"'.format(ssid))
 
     

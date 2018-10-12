@@ -6,99 +6,105 @@ from .config import config
 from .bus import bus
 
 
-commentPattern = re.compile(r"#(.*)")
-errorPattern = re.compile(r"!(.*)")
-eventPattern = re.compile(r"\*(.*)")
+_commentPattern = re.compile(r"#(.*)")
+_errorPattern = re.compile(r"!(.*)")
+_eventPattern = re.compile(r"\*(.*)")
 
-logger = logging.getLogger('Serial')
-exitEvent = Event()
-thread = None
-port = None
-writeLock = Lock()
-responseReceived = Event()
-responseError = None
-responseLines = []
+_logger = logging.getLogger('Serial')
+_exitEvent = Event()
+_thread = None
+_port = None
+_writeLock = Lock()
+_responseReceived = Event()
+_responseError = None
+_responseLines = []
 
 
 class SerialError(Exception):
     pass
     
-@bus.on('server:stop')
-def _bus_serverStop():
-    exitEvent.set()
-    
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
-    global thread
-    exitEvent.clear()
-    thread = Thread(target = _threadLoop, name = 'SerialThread')
-    thread.daemon = True
-    thread.start()
+    global _thread
+    _exitEvent.clear()
+    _thread = Thread(target = _threadLoop, name = 'SerialThread')
+    _thread.daemon = True
+    _thread.start()
     
     # TODO: send commands to indicate I've started
+@bus.on('server/stop')
+def _bus_serverStop():
+    _exitEvent.set()
+    
+@bus.on('socket/consoleConnect')
+def _bus_consoleConnect():
+    try:
+        write('RO', timeout = 1)  # power on, turn of lights
+    except SerialError as e:
+        _logger.error(e)
 
 def _threadLoop():
-    global port
-    logger.info('Serial thread started')
+    global _port
+    _logger.info('Serial thread started')
     try:
-        port = serial.Serial(config.get('serial', 'port'), config.getint('serial', 'speed'), timeout = None)
-        logger.info('Serial port {} opened at {}'.format(port.name, port.baudrate))
-        while not exitEvent.is_set():
+        _port = serial.Serial(config.get('serial', 'port'), config.getint('serial', 'speed'), timeout = None)
+        _logger.info('Serial _port {} opened at {}'.format(_port.name, _port.baudrate))
+        while not _exitEvent.is_set():
             _readPort()
     except IOError as e:
-        logger.error(str(e))
-        if port:
-            port.close()
-            port = None
-    logger.info('Serial thread stopped')
+        _logger.error(str(e))
+        if _port:
+            _port.close()
+            _port = None
+    _logger.info('Serial thread stopped')
     
 def _readPort():
-    line = port.readline()
+    line = _port.readline()
     if line:
         _processLine(line.rstrip().decode('ascii'))
 
 def _processLine(line):
-    logger.debug('got: {}'.format(line))
+    _logger.debug('got: {}'.format(line))
     
     if line.lower() == 'ok':
-        responseError = None
-        responseReceived.set()
+        _responseError = None
+        _responseReceived.set()
         return
         
-    m = errorPattern.match(line)
+    m = _errorPattern.match(line)
     if m:
-        responseError = m.group(1)
-        responseReceived.set()
+        _responseError = m.group(1)
+        _responseReceived.set()
         return
         
-    m = eventPattern.match(line)
+    m = _eventPattern.match(line)
     if m:
-        bus.emit('serial:event', m.group(1))
+        bus.emit('serial/event', m.group(1))
         return
         
-    m = commentPattern.match(line)
+    m = _commentPattern.match(line)
     if m:
-        logger.debug('Received: {}'.format(m.group(1)))
+        _logger.debug('Received: {}'.format(m.group(1)))
         return
         
-    responseLines.append(line)
+    _responseLines.append(line)
     
 def write(line, timeout = 5):
-    global responseLines, responseError
-    with writeLock:
-        logger.debug('Sending: {}'.format(line))
-        if not port:
+    global _responseLines, _responseError
+    with _writeLock:
+        _logger.debug('Sending: {}'.format(line))
+        if not _port:
             raise SerialError('serial port is not open')
-        responseLines = []
-        responseError = None
-        responseReceived.clear()
-        port.write((line + '\r\n').encode('ascii'))
+        _responseLines = []
+        _responseError = None
+        _responseReceived.clear()
+        _port.write((line + '\r\n').encode('ascii'))
         if timeout:
-            if not responseReceived.wait(timeout):
-                responseError = 'timeout'
+            if not _responseReceived.wait(timeout):
+                _responseError = 'timeout'
         else:
-            responseReceived.wait()
-        if responseError:
-            raise SerialError(responseError)
-        return responseLines
+            _responseReceived.wait()
+        if _responseError:
+            raise SerialError(_responseError)
+        return _responseLines
    

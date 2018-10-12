@@ -26,15 +26,12 @@ from barbot.app import app
 from barbot.socket import socket
 
 import barbot.serial
-import barbot.barbot
+import barbot.core
 import barbot.models
 from barbot.models.User import User
 import barbot.wifi
 import barbot.lights
 import barbot.audio
-
-import barbot.appHandlers
-import barbot.socketHandlers
 
 
 webThread = None
@@ -77,7 +74,7 @@ def startServer():
     webThread.daemon = True
     webThread.start()
 
-    bus.emit('server:start')
+    bus.emit('server/start')
     
     logger.info('Server started')
     
@@ -85,7 +82,7 @@ def startServer():
     while not exitEvent.is_set():
         exitEvent.wait(1)
         
-    bus.emit('server:stop')
+    bus.emit('server/stop')
     #time.sleep(3)
     
     logger.info('Server stopped')

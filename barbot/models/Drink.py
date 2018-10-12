@@ -5,10 +5,12 @@ from peewee import *
 from ..db import db, BarbotModel, ModelError, addModel
 from ..bus import bus
 from ..config import config
+from .. import utils
+
 from .Glass import Glass
 
 
-logger = logging.getLogger('Models.Drink')
+_logger = logging.getLogger('Models.Drink')
 
 
 class Drink(BarbotModel):
@@ -34,7 +36,7 @@ class Drink(BarbotModel):
 
     @staticmethod
     @db.atomic()
-    def save_from_dict(item):
+    def saveFromDict(item):
         if 'id' in item.keys() and item['id'] != False:
             d = Drink.get(Drink.id == item['id'])
         else:
@@ -47,22 +49,29 @@ class Drink(BarbotModel):
         d.save()
         
     @staticmethod
-    def delete_by_id(id):
+    def deleteById(id):
         d = Drink.get(Drink.id == item['id'])
         d.delete_instance()
     
+    # override
     def save(self, emitEvent = True, *args, **kwargs):
+    
+        d = Drink.select().where(Drink.primaryName == self.primaryName, Drink.secondaryName == self.secondaryName).first()
+        if d and self.id != d.id:
+            raise ModelError('A drink with the same name already exists!')
+    
         if not self.isFavorite and self.timesDispensed >= config.getint('barbot', 'favoriteDrinkCount'):
             self.isFavorite
         if self.is_dirty():
             self.updatedDate = datetime.datetime.now()
         if super().save(*args, **kwargs):
             if emitEvent:
-                bus.emit('model:drink:saved', self)
+                bus.emit('model/drink/saved', self)
         
+    # override
     def delete_instance(self, *args, **kwargs):
         super().delete_instance(*args, **kwargs)
-        bus.emit('model:drink:deleted', self)
+        bus.emit('model/drink/deleted', self)
     
     def set(self, dict):
         if 'primaryName' in dict:
@@ -89,6 +98,13 @@ class Drink(BarbotModel):
                 if len(stepIngs) >= 4:
                     raise ModelError('There are already 4 ingredients in the same step!')
 
+        # don't allow more ingredients than configured
+        totalMLs = 0
+        for i in ingredients:
+            totalMLs = totalMLs + utils.toML(float(i['amount']), i['units'])
+        if totalMLs > config.getint('client', 'drinkSizeLimit'):
+            raise ModelError('Drink ingredients exceed configured limit!')
+            
         isAlcoholic = False
         
         # update/remove ingredients
@@ -98,11 +114,11 @@ class Drink(BarbotModel):
                 di.set(i)
                 di.save()
                 isAlcoholic = isAlcoholic | di.ingredient.isAlcoholic
-                #logger.info('updating ' + str(di.id))
+                #_logger.info('updating ' + str(di.id))
                 ingredients.remove(i)
             else:
                 di.delete_instance()
-                logger.info('deleted ' + str(di.id))
+                _logger.info('deleted ' + str(di.id))
             
         # add new ingredients
         for ingredient in ingredients:
@@ -111,11 +127,11 @@ class Drink(BarbotModel):
             di.set(ingredient)
             di.save()
             isAlcoholic = isAlcoholic | di.ingredient.isAlcoholic
-            logger.info('add ingredient ' + str(ingredient['ingredientId']))
+            _logger.info('add ingredient ' + str(ingredient['ingredientId']))
     
         self.isAlcoholic = isAlcoholic
     
-    def to_dict(self, glass = False, ingredients = False):
+    def toDict(self, glass = False, ingredients = False):
         out = {
             'id': self.id,
             'primaryName': self.primaryName,
@@ -131,9 +147,9 @@ class Drink(BarbotModel):
             'name': self.name(),
         }
         if glass:
-            out['glass'] = self.glass.to_dict()
+            out['glass'] = self.glass.toDict()
         if ingredients:
-            out['ingredients'] = [di.to_dict(ingredient = True) for di in self.ingredients]
+            out['ingredients'] = [di.toDict(ingredient = True) for di in self.ingredients]
         return out
     
     class Meta:

@@ -5,15 +5,14 @@ from .config import config
 from .bus import bus
 
 
-levelPattern = re.compile(r"^level\.(.*)")
+_levelPattern = re.compile(r"^level\.(.*)")
 
 
-@bus.on('config:reloaded')
+@bus.on('config/reloaded')
 def _bus_configReloaded():
     _setLoggingLevels()
     
 def configure(console = False):
-    #config = config['logging']
     root = logging.getLogger()
     root.setLevel(getattr(logging, config.get('logging', 'logLevel')))
     
@@ -34,6 +33,6 @@ def configure(console = False):
     
 def _setLoggingLevels():
     for (k, v) in config.items('logging'):
-        m = levelPattern.match(k)
+        m = _levelPattern.match(k)
         if m:
             logging.getLogger(m.group(1)).setLevel(getattr(logging, v))

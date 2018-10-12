@@ -21,21 +21,22 @@ SEGMENTS_MAIN = '0'
 SEGMENTS_ALL = '1:2:3:4'
 
 
-logger = logging.getLogger('Lights')
+_logger = logging.getLogger('Lights')
 
 
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
     savePattern(0, config.get('lights', 'startupPattern'))
     savePattern(1, config.get('lights', 'shutdownPattern'))
 
-# TODO: move this somewhere else    
-@bus.on('socket:consoleConnect')
-def _bus_consoleConnect():
-    try:
-        serial.write('RO', 1)  # power on, turn of lights
-    except serial.SerialError as e:
-        logger.error('Lights error: {}'.format(str(e)))
+@bus.on('lights/play')
+def _bus_play(patternName):
+    if patternName is None:
+        setColor(SEGMENTS_MAIN, COLOR_OFF)
+    else:
+        pattern = config.get('lights', patternName + 'Pattern')
+        if pattern:
+            playPattern(pattern)
         
 def setColor(segments, color):
     if config.getboolean('lights', 'enabled'):
@@ -57,4 +58,4 @@ def _sendCommand(cmd):
     try:
         serial.write(cmd)
     except serial.SerialError as e:
-        logger.error('Lights error: {}'.format(str(e)))
+        _logger.error('Lights error: {}'.format(str(e)))

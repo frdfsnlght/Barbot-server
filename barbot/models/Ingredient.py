@@ -2,11 +2,11 @@
 import logging
 from peewee import *
 
-from ..db import db, BarbotModel, addModel
+from ..db import db, BarbotModel, ModelError, addModel
 from ..bus import bus
 
 
-logger = logging.getLogger('Models.Ingredient')
+_logger = logging.getLogger('Models.Ingredient')
 
 
 class Ingredient(BarbotModel):
@@ -16,7 +16,7 @@ class Ingredient(BarbotModel):
     amountDispensed = FloatField(default = 0)
     
     @staticmethod
-    def save_from_dict(item):
+    def saveFromDict(item):
         if 'id' in item.keys() and item['id'] != False:
             i = Ingredient.get(Ingredient.id == item['id'])
         else:
@@ -25,17 +25,24 @@ class Ingredient(BarbotModel):
         i.save()
         
     @staticmethod
-    def delete_by_id(id):
+    def deleteById(id):
         i = Ingredient.get(Ingredient.id == id)
         i.delete_instance()
         
+    # override
     def save(self, emitEvent = False, *args, **kwargs):
-        if super().save(*args, **kwargs) or emitEvent == 'force':
-            bus.emit('model:ingredient:saved', self)
     
+        i = Ingredient.select().where(Ingredient.name == self.name).first()
+        if i and self.id != i.id:
+            raise ModelError('An ingredient with the same name already exists!')
+    
+        if super().save(*args, **kwargs) or emitEvent == 'force':
+            bus.emit('model/ingredient/saved', self)
+    
+    # override
     def delete_instance(self, *args, **kwargs):
         super().delete_instance(*args, **kwargs)
-        bus.emit('model:ingredient:deleted', self)
+        bus.emit('model/ingredient/deleted', self)
     
     def set(self, dict):
         if 'name' in dict:
@@ -43,7 +50,7 @@ class Ingredient(BarbotModel):
         if 'isAlcoholic' in dict:
             self.isAlcoholic = bool(dict['isAlcoholic'])
     
-    def to_dict(self, drinks = False):
+    def toDict(self, drinks = False):
         pump = self.pump.first()
         out = {
             'id': self.id,
@@ -54,7 +61,7 @@ class Ingredient(BarbotModel):
             'isAvailable': pump and pump.isReady(),
         }
         if drinks:
-            out['drinks'] = [di.to_dict(drink = True) for di in self.drinks]
+            out['drinks'] = [di.toDict(drink = True) for di in self.drinks]
         return out
         
     

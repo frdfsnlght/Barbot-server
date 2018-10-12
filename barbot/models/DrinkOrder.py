@@ -8,10 +8,10 @@ from ..config import config
 from .Drink import Drink
 
 
-logger = logging.getLogger('Models.DrinkOrder')
+_logger = logging.getLogger('Models.DrinkOrder')
 
 
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
     DrinkOrder.clearSessionIds()
     
@@ -48,7 +48,7 @@ class DrinkOrder(BarbotModel):
                     DrinkOrder.completedDate < (datetime.datetime.now() - datetime.timedelta(seconds = config.getint('barbot', 'maxDrinkOrderAge')))
                 ).execute()
         if num:
-            logger.info('deleted ' + str(num) + ' old drink orders')
+            _logger.info('Deleted {} old drink orders'.format(num))
         
     @staticmethod
     def clearSessionIds():
@@ -74,15 +74,17 @@ class DrinkOrder(BarbotModel):
         o.save()
         return o
 
+    # override
     def save(self, *args, **kwargs):
         if super().save(*args, **kwargs):
-            bus.emit('model:drinkOrder:saved', self)
+            bus.emit('model/drinkOrder/saved', self)
         
+    # override
     def delete_instance(self, *args, **kwargs):
         super().delete_instance(*args, **kwargs)
-        bus.emit('model:drinkOrder:deleted', self)
+        bus.emit('model/drinkOrder/deleted', self)
             
-    def place_on_hold(self):
+    def placeOnHold(self):
         self.startedDate = None
         self.userHold = True
         self.save()
@@ -102,7 +104,7 @@ class DrinkOrder(BarbotModel):
         if 'sessionId' in dict:
             self.sessionId = str(dict['sessionId'])
     
-    def to_dict(self, drink = False, glass = False):
+    def toDict(self, drink = False, glass = False):
         out = {
             'id': self.id,
             'drinkId': self.drink.id,
@@ -114,7 +116,7 @@ class DrinkOrder(BarbotModel):
             'userHold': self.userHold,
         }
         if drink:
-            out['drink'] = self.drink.to_dict(glass = glass)
+            out['drink'] = self.drink.toDict(glass = glass)
         return out
         
     class Meta:

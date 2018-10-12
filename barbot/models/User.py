@@ -7,24 +7,24 @@ from ..db import db, BarbotModel, ModelError, addModel
 from ..bus import bus
 
 
-logger = logging.getLogger('Models.User')
+_logger = logging.getLogger('Models.User')
 
-pwd_context = CryptContext(
+_pwdContext = CryptContext(
     schemes = ['bcrypt'],
     deprecated = 'auto',
 )
 
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
     users = User.select()
     if not users:
-        logger.warning('There are no user\'s in the database!')
+        _logger.warning('There are no user\'s in the database!')
         user = User.addUser('admin', 'Administrator', None, isAdmin = True)
-        logger.warning('Added "admin" user with empty password! Please set a password ASAP!')
+        _logger.warning('Added "admin" user with empty password! Please set a password ASAP!')
     else:
         admin = User.get_or_none(User.isAdmin == True)
         if not admin:
-            logger.warning('There must be at least one admin user! Please add one!')
+            _logger.warning('There must be at least one admin user! Please add one!')
 
 class User(BarbotModel):
     name = CharField(unique = True)
@@ -74,26 +74,28 @@ class User(BarbotModel):
             return user
         return False
         
+    # override
     def save(self, *args, **kwargs):
         if super().save(*args, **kwargs):
-            bus.emit('model:user:saved', self)
+            bus.emit('model/user/saved', self)
     
+    # override
     def delete_instance(self, *args, **kwargs):
         super().delete_instance(*args, **kwargs)
-        bus.emit('model:user:deleted', self)
+        bus.emit('model/user/deleted', self)
     
     def setPassword(self, password):
         if password:
-            self.password = pwd_context.hash(password)
+            self.password = _pwdContext.hash(password)
         else:
             self.password = None
     
     def passwordMatches(self, password):
         if not password and not self.password:
             return True
-        return pwd_context.verify(password, self.password)
+        return _pwdContext.verify(password, self.password)
         
-    def to_dict(self):
+    def toDict(self):
         out = {
             'id': self.id,
             'name': self.name,

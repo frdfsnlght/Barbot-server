@@ -18,11 +18,6 @@ class DrinkIngredient(BarbotModel):
     units = CharField()
     step = IntegerField(default = 0)
 
-    def save(self, *args, **kwargs):
-        if super().save(*args, **kwargs):
-           # bus.emit('model:drinkIngredient:saved', self)
-           pass
-
     def set(self, dict):
         if 'drinkId' in dict:
             self.drink = int(dict['drinkId'])
@@ -38,7 +33,7 @@ class DrinkIngredient(BarbotModel):
     def ingredientName(self):
         return str(self.amount) + ' ' + self.units + ' ' + self.ingredient.name
 
-    def to_dict(self, drink = False, ingredient = False):
+    def toDict(self, drink = False, ingredient = False):
         out = {
             'id': self.id,
             'drinkId': self.drink.id,
@@ -48,9 +43,9 @@ class DrinkIngredient(BarbotModel):
             'step': self.step,
         }
         if drink:
-            out['drink'] = self.drink.to_dict()
+            out['drink'] = self.drink.toDict()
         if ingredient:
-            out['ingredient'] = self.ingredient.to_dict()
+            out['ingredient'] = self.ingredient.toDict()
         return out
         
     class Meta:

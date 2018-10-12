@@ -11,38 +11,37 @@ from .. import serial
 from .Ingredient import Ingredient
 
 
-pumpStopEventPattern = re.compile(r"(?i)PS(\d+)")
+_pumpStopEventPattern = re.compile(r"(?i)PS(\d+)")
 
+_logger = logging.getLogger('Models.Pump')
 
-logger = logging.getLogger('Models.Pump')
+_pumpExtras = {}
 
-pumpExtras = {}
-
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
     pumps = Pump.select()
     if len(pumps) != config.getint('pumps', 'count'):
-        logger.warning('Database pump count doesn\'t match configuration count!')
+        _logger.warning('Database pump count doesn\'t match configuration count!')
         Pump.delete().execute()
         for i in range(0, config.getint('pumps', 'count')):
             p = Pump()
             p.id = i + 1
             p.save(force_insert = True)
-        logger.info('Initialized pumps')
+        _logger.info('Initialized pumps')
 
-@bus.on('serial:event')
+@bus.on('serial/event')
 def _bus_serialEvent(e):
-    m = pumpStopEventPattern.match(e)
+    m = _pumpStopEventPattern.match(e)
     if m:
         pump = Pump.get_or_none(Pump.id == int(m.group(1)) + 1)
         if pump:
             with pump.lock:
                 pump.running = False
                 pump.save()
-                logger.info('Pump {} stopped'.format(pump.name()))
+                _logger.info('Pump {} stopped'.format(pump.name()))
 
 def anyPumpsRunning():
-    for i, p in pumpExtras.items():
+    for i, p in _pumpExtras.items():
         if p.running:
             return True
     return False
@@ -65,11 +64,9 @@ class PumpExtra(object):
         self.previousState = pump.state
         self.lock = Lock()
         self.isDirty = False
-#        print('PumpExtra created for pump ' + str(id))
         
     def __setattr__(self, attr, value):
         super().__setattr__(attr, value)
-#        print('pumpextra.setattr ' + attr + ' = ' + str(value))
         if attr in PumpExtra.dirtyAttributes:
             self.isDirty = True
         
@@ -135,6 +132,7 @@ class Pump(BarbotModel):
         p.clean(float(params['amount']) if 'amount' in params else (p.volume * config.getfloat('pumps', 'cleanFactor')), *args, **kwargs)
         
         
+    # override
     def save(self, *args, **kwargs):
             
         if self.state == Pump.LOADED or self.state == Pump.READY:
@@ -146,17 +144,23 @@ class Pump(BarbotModel):
                 raise ModelError('units is required')
             if utils.toML(self.amount, self.units) > utils.toML(self.containerAmount, self.units):
                 raise ModelError('amount must be less than container amount')
+            if not self.ingredient:
+                raise ModelError('ingredient is required')
+            i = Pump.select().where(Pump.ingredient == self.ingredient).first()
+            if i and self.id != i.id:
+                raise ModelError('That ingredient is already loaded on another pump!')
 
         emitStateChanged = False
         if 'state' in self.dirty_fields:
             emitStateChanged = True
         if super().save(*args, **kwargs) or self.pumpExtra.isDirty:
-            bus.emit('model:pump:saved', self)
+            bus.emit('model/pump/saved', self)
             self.pumpExtra.isDirty = False
             if emitStateChanged:
-                bus.emit('model:pump:stateChanged', self, self.previousState)
+                bus.emit('model/pump/stateChanged', self, self.previousState)
                 self.previousState = self.state
         
+    # override
     def delete_instance(self, *args, **kwargs):
         raise ModelError('pumps cannot be deleted!')
     
@@ -239,7 +243,7 @@ class Pump(BarbotModel):
     # amount is ml!
     def forward(self, amount):
         amount = float(amount)
-        logger.info('Pump {} forward {} ml'.format(self.name(), amount))
+        _logger.info('Pump {} forward {} ml'.format(self.name(), amount))
         
         with self.lock:
             try:
@@ -256,18 +260,12 @@ class Pump(BarbotModel):
                         self.state = Pump.EMPTY
                 self.save()
             except serial.SerialError as e:
-                logger.error('Pump error: {}'.format(str(e)))
-        
-        # TODO: remove this
-        #time.sleep(amount / 2)
-        #self.running = False
-        #self.save()
-        #logger.info('Pump {} stopped'.format(self.name()))
+                _logger.error('Pump error: {}'.format(str(e)))
         
     # amount is ml!
     def reverse(self, amount):
         amount = float(amount)
-        logger.info('Pump {} reverse {} ml'.format(self.name(), amount))
+        _logger.info('Pump {} reverse {} ml'.format(self.name(), amount))
 
         with self.lock:
             try:
@@ -280,16 +278,10 @@ class Pump(BarbotModel):
                 self.running = True
                 self.save()
             except serial.SerialError as e:
-                logger.error('Pump error: {}'.format(str(e)))
+                _logger.error('Pump error: {}'.format(str(e)))
         
-        # TODO: remove this
-        #time.sleep(amount / 2)
-        #self.running = False
-        #self.save()
-        #logger.info('Pump {} stopped'.format(self.name()))
-    
     def stop(self):
-        logger.info('Pump {} stop'.format(self.name(), amount))
+        _logger.info('Pump {} stop'.format(self.name(), amount))
 
         with self.lock:
             try:
@@ -297,7 +289,7 @@ class Pump(BarbotModel):
                 self.running = False
                 self.save()
             except serial.SerialError as e:
-                logger.error('Pump error: {}'.format(str(e)))
+                _logger.error('Pump error: {}'.format(str(e)))
     
     def name(self):
         return '#' + str(self.id)
@@ -316,7 +308,7 @@ class Pump(BarbotModel):
         elif 'amount' in dict:
             self.amount = float(dict['amount'])
     
-    def to_dict(self, ingredient = False):
+    def toDict(self, ingredient = False):
         out = {
             'id': self.id,
             'name': self.name(),
@@ -329,28 +321,24 @@ class Pump(BarbotModel):
         if ingredient:
             if self.ingredient:
                 out['ingredientId'] = self.ingredient.id
-                out['ingredient'] = self.ingredient.to_dict()
+                out['ingredient'] = self.ingredient.toDict()
             else:
                 out['ingredient'] = None
         return out
 
     def __getattr__(self, attr):
         if attr == 'pumpExtra':
-            if self.id not in pumpExtras:
-                pumpExtras[self.id] = PumpExtra(self)
-            return pumpExtras[self.id]
+            if self.id not in _pumpExtras:
+                _pumpExtras[self.id] = PumpExtra(self)
+            return _pumpExtras[self.id]
         if attr in PumpExtra.allAttributes:
-#            print('getattr ' + attr + ' from PumpExtra')
             return getattr(self.pumpExtra, attr)
-#        print('getattr ' + attr + ' from myself')
         return super().__getattr__(attr)
 
     def __setattr__(self, attr, value):
         if attr in PumpExtra.allAttributes:
-#            print('setattr ' + attr + ' in PumpExtra')
             setattr(self.pumpExtra, attr, value)
         else:
-#            print('pump.setattr ' + attr + ' = ' + str(value))
             super().__setattr__(attr, value)
             
     class Meta:

@@ -24,117 +24,111 @@ CTL_CANCEL = 'cancel'
 CTL_OK = 'ok'
 
 
-sensorEventPattern = re.compile(r"(?i)S(\d)")
+_sensorEventPattern = re.compile(r"(?i)S(\d)")
 
-logger = logging.getLogger('Barbot')
-exitEvent = Event()
-thread = None
+_logger = logging.getLogger('Barbot')
+_exitEvent = Event()
+_thread = None
+_requestPumpSetup = False
+_suppressMenuRebuild = False
+_dispenseEvent = Event()
+_lastDrinkOrderCheckTime = time.time()
+
 dispenserHold = False
 pumpSetup = False
 glassReady = False
-requestPumpSetup = False
-suppressMenuRebuild = False
-
 dispenseState = None
 dispenseControl = None
 dispenseDrinkOrder = None
-dispenseEvent = Event()
-
-lastDrinkOrderCheckTime = time.time()
 
 
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_serverStart():
-    global thread
-    exitEvent.clear()
-    thread = Thread(target = _threadLoop, name = 'BarbotThread', daemon = True)
-    thread.start()
+    global _thread
+    _rebuildMenu()
+    _exitEvent.clear()
+    _thread = Thread(target = _threadLoop, name = 'CoreThread', daemon = True)
+    _thread.start()
 
-@bus.on('server:stop')
+@bus.on('server/stop')
 def _bus_serverStop():
-    exitEvent.set()
+    _exitEvent.set()
     
-@bus.on('serial:event')
+@bus.on('serial/event')
 def _bus_serialEvent(e):
     global glassReady
-    m = sensorEventPattern.match(e)
+    m = _sensorEventPattern.match(e)
     if m:
         newGlassReady = m.group(1) == '1'
         if newGlassReady != glassReady:
             glassReady = newGlassReady
-            bus.emit('barbot:glassReady', glassReady)
-            dispenseEvent.set()
+            bus.emit('core/glassReady', glassReady)
+            _dispenseEvent.set()
             
 #-----------------
 # TODO: remove this temp code someday
 glassThread = None
 import os.path
 from . import paths
-@bus.on('server:start')
+@bus.on('server/start')
 def _bus_startGlassThread():
     global glassThread
     glassThread = Thread(target = _glassThreadLoop, name = 'BarbotGlassThread', daemon = True)
     glassThread.start()
 def _glassThreadLoop():
     global glassReady
-    while not exitEvent.is_set():
+    while not _exitEvent.is_set():
         newGlassReady = os.path.isfile(os.path.join(paths.VAR_DIR, 'glass'))
         if newGlassReady != glassReady:
             glassReady = newGlassReady
-            bus.emit('barbot:glassReady', glassReady)
-            dispenseEvent.set()
+            bus.emit('core/glassReady', glassReady)
+            _dispenseEvent.set()
         time.sleep(1)
 # end of temp code
 #---------------------
 
-@bus.on('barbot:restart')
-def _bus_restart():
+def restart():
     cmd = config.get('server', 'restartCommand').split(' ')
     out = subprocess.run(cmd,
             stdout = subprocess.PIPE,
             stderr = subprocess.STDOUT,
             universal_newlines = True)
     if out.returncode != 0:
-        logger.error('Error trying to restart: {}'.format(out.stdout))
+        _logger.error('Error trying to restart: {}'.format(out.stdout))
         return
-    bus.emit('lights:play', 'restart')
-    bus.emit('audio:play', 'restart')
+    bus.emit('lights/play', 'restart')
+    bus.emit('audio/play', 'restart')
     
     
-@bus.on('barbot:shutdown')
-def _bus_shutdown():
+def shutdown():
     cmd = config.get('server', 'shutdownCommand').split(' ')
     out = subprocess.run(cmd,
             stdout = subprocess.PIPE,
             stderr = subprocess.STDOUT,
             universal_newlines = True)
     if out.returncode != 0:
-        logger.error('Error trying to shutdown: {}'.format(out.stdout))
+        _logger.error('Error trying to shutdown: {}'.format(out.stdout))
     return
-    bus.emit('lights:play', 'shutdown')
-    bus.emit('audio:play', 'shutdown')
+    bus.emit('lights/play', 'shutdown')
+    bus.emit('audio/play', 'shutdown')
     
-@bus.on('barbot:toggleDispenserHold')
-def _bus_toggleDispenserHold():
+def toggleDispenserHold():
     global dispenserHold
     dispenserHold = not dispenserHold
-    bus.emit('barbot:dispenserHold', dispenserHold)
+    bus.emit('core/dispenserHold', dispenserHold)
     
-@bus.on('barbot:startPumpSetup')
-def _bus_startPumpSetup():
-    global requestPumpSetup
-    requestPumpSetup = True
+def startPumpSetup():
+    global _requestPumpSetup
+    _requestPumpSetup = True
     
-@bus.on('barbot:stopPumpSetup')
-def _bus_stopPumpSetup():
-    global requestPumpSetup, pumpSetup
-    requestPumpSetup = False
+def stopPumpSetup():
+    global _requestPumpSetup, pumpSetup
+    _requestPumpSetup = False
     pumpSetup = False
     _rebuildMenu()
-    bus.emit('barbot:pumpSetup', pumpSetup)
+    bus.emit('core/pumpSetup', pumpSetup)
 
-@bus.on('barbot:setParentalLock')
-def _bus_setParentalLock(code):
+def setParentalLock(code):
     if not code:
         try:
             os.remove(config.getpath('barbot', 'parentalCodeFile'))
@@ -142,7 +136,7 @@ def _bus_setParentalLock(code):
             pass
     else:
         open(config.getpath('barbot', 'parentalCodeFile'), 'w').write(code)
-    bus.emit('barbot:parentalLock', True if code else False)
+    bus.emit('core/parentalLock', True if code else False)
 
 def getParentalCode():
     try:
@@ -150,53 +144,49 @@ def getParentalCode():
     except IOError:
         return False
 
-@bus.on('barbot:submitDrinkOrder')
-def _bus_submitDrinkOrder(item):
+def submitDrinkOrder(item):
     d = Drink.get(Drink.id == item['drinkId'])
     if d.isAlcoholic:
         code = getParentalCode()
         if code:
             if not 'parentalCode' in item:
-                raise ModelError('Parental code required!')
+                raise CoreError('Parental code required!')
             if item['parentalCode'] != code:
-                raise ModelError('Invalid parental code!')
+                raise CoreError('Invalid parental code!')
     o = DrinkOrder.submitFromDict(item)
-    bus.emit('barbot:drinkOrderSubmitted', o)
-    bus.emit('audio:play', 'drinkOrderSubmitted', sessionId = o.sessionId)
+    bus.emit('core/drinkOrderSubmitted', o)
+    bus.emit('audio/play', 'drinkOrderSubmitted', sessionId = o.sessionId)
 
-@bus.on('barbot:cancelDrinkOrder')
-def _bus_cancelDrinkOrder(id):
+def cancelDrinkOrder(id):
     o = DrinkOrder.cancelById(id)
-    bus.emit('barbot:drinkOrderCancelled', o)
-    bus.emit('audio:play', 'drinkOrderCancelled', sessionId = o.sessionId)
+    bus.emit('core/drinkOrderCancelled', o)
+    bus.emit('audio/play', 'drinkOrderCancelled', sessionId = o.sessionId)
         
-@bus.on('barbot:toggleDrinkOrderHold')
-def _bus_toggleDrinkOrderHold(id):
+def toggleDrinkOrderHold(id):
     o = DrinkOrder.toggleHoldById(id)
-    bus.emit('barbot:drinkOrderHoldToggled', o)
-    bus.emit('audio:play', 'drinkOrderOnHold' if o.userHold else 'drinkOrderOffHold', sessionId = o.sessionId)
+    bus.emit('core/drinkOrderHoldToggled', o)
+    bus.emit('audio/play', 'drinkOrderOnHold' if o.userHold else 'drinkOrderOffHold', sessionId = o.sessionId)
     
-@bus.on('barbot:dispenseControl')
-def _bus_dispenseControl(ctl):
+def setDispenseControl(ctl):
     global dispenseControl
     dispenseControl = ctl
-    dispenseEvent.set()
+    _dispenseEvent.set()
         
 def _threadLoop():
-    global lastDrinkOrderCheckTime, requestPumpSetup, pumpSetup
-    logger.info('Barbot thread started')
-    while not exitEvent.is_set():
-        if requestPumpSetup:
-            requestPumpSetup = False
+    global _lastDrinkOrderCheckTime, _requestPumpSetup, pumpSetup
+    _logger.info('Core thread started')
+    while not _exitEvent.is_set():
+        if _requestPumpSetup:
+            _requestPumpSetup = False
             pumpSetup = True
-            bus.emit('barbot:pumpSetup', pumpSetup)
+            bus.emit('core/pumpSetup', pumpSetup)
             
         while pumpSetup or dispenserHold or anyPumpsRunning():
             time.sleep(1)
         
         
-        if (time.time() - lastDrinkOrderCheckTime) > 5:
-            lastDrinkOrderCheckTime = time.time()
+        if (time.time() - _lastDrinkOrderCheckTime) > 5:
+            _lastDrinkOrderCheckTime = time.time()
             o = DrinkOrder.getFirstPending()
             if o:
                 _dispenseDrinkOrder(o)
@@ -204,7 +194,7 @@ def _threadLoop():
         else:
             time.sleep(1)
             
-    logger.info('Barbot thread stopped')
+    _logger.info('Core thread stopped')
     
 def _dispenseDrinkOrder(o):
     global dispenseState, dispenseDrinkOrder, dispenseControl
@@ -213,40 +203,40 @@ def _dispenseDrinkOrder(o):
     o.save()
     
     dispenseDrinkOrder = o
-    logger.info('Preparing to dispense {}'.format(dispenseDrinkOrder.desc()))
+    _logger.info('Preparing to dispense {}'.format(dispenseDrinkOrder.desc()))
     
     # wait for user to start or cancel the order
     
     dispenseState = ST_START
-    dispenseEvent.clear()
+    _dispenseEvent.clear()
     dispenseControl = None
-    bus.emit('barbot:dispenseState', dispenseState, dispenseDrinkOrder)
-    bus.emit('lights:play', 'waitForDispense')
-    bus.emit('audio:play', 'waitForDispense')
+    bus.emit('core/dispenseState', dispenseState, dispenseDrinkOrder)
+    bus.emit('lights/play', 'waitForDispense')
+    bus.emit('audio/play', 'waitForDispense')
     
     while True:
-        dispenseEvent.wait()
-        dispenseEvent.clear()
+        _dispenseEvent.wait()
+        _dispenseEvent.clear()
         # glassReady or dispenseControl changed
         
         if dispenseControl == CTL_CANCEL:
-            logger.info('Cancelled dispensing {}'.format(dispenseDrinkOrder.desc()))
-            dispenseDrinkOrder.place_on_hold()
-            bus.emit('lights:play', None)
-            bus.emit('audio:play', 'cancelledDispense')
-            bus.emit('audio:play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
+            _logger.info('Cancelled dispensing {}'.format(dispenseDrinkOrder.desc()))
+            dispenseDrinkOrder.placeOnHold()
+            bus.emit('lights/play', None)
+            bus.emit('audio/play', 'cancelledDispense')
+            bus.emit('audio/play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
             dispenseDrinkOrder = None
             dispenseState = None
-            bus.emit('barbot:dispenseState', dispenseState, dispenseDrinkOrder)
+            bus.emit('core/dispenseState', dispenseState, dispenseDrinkOrder)
 
             return
         
         if dispenseControl == CTL_START and glassReady:
             dispenseState = ST_DISPENSE
-            bus.emit('barbot:dispenseState', dispenseState, dispenseDrinkOrder)
-            bus.emit('lights:play', 'startDispense')
-            bus.emit('audio:play', 'startDispense')
-            logger.info('Starting to dispense {}'.format(dispenseDrinkOrder.desc()))
+            bus.emit('core/dispenseState', dispenseState, dispenseDrinkOrder)
+            bus.emit('lights/play', 'startDispense')
+            bus.emit('audio/play', 'startDispense')
+            _logger.info('Starting to dispense {}'.format(dispenseDrinkOrder.desc()))
             break
     
     drink = dispenseDrinkOrder.drink
@@ -255,7 +245,7 @@ def _dispenseDrinkOrder(o):
     for step in sorted({i.step for i in drink.ingredients}):
     
         ingredients = [di for di in drink.ingredients if di.step == step]
-        logger.info('Executing step {}, {} ingredients'.format(step, len(ingredients)))
+        _logger.info('Executing step {}, {} ingredients'.format(step, len(ingredients)))
         pumps = []
         
         # start the pumps
@@ -278,28 +268,28 @@ def _dispenseDrinkOrder(o):
                 # all pumps have stopped
                 break
 
-            if dispenseEvent.wait(0.1):
-                dispenseEvent.clear()
+            if _dispenseEvent.wait(0.1):
+                _dispenseEvent.clear()
                 
                 if not glassReady:
-                    logger.warning('Glass removed while dispensing {}'.format(dispenseDrinkOrder.desc()))
+                    _logger.warning('Glass removed while dispensing {}'.format(dispenseDrinkOrder.desc()))
                     for pump in pumps:
                         pump.stop()
-                    bus.emit('lights:play', 'glassRemovedDispense')
-                    bus.emit('audio:play', 'glassRemovedDispense')
-                    bus.emit('audio:play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
-                    dispenseDrinkOrder.place_on_hold()
+                    bus.emit('lights/play', 'glassRemovedDispense')
+                    bus.emit('audio/play', 'glassRemovedDispense')
+                    bus.emit('audio/play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
+                    dispenseDrinkOrder.placeOnHold()
                     dispenseDrinkOrder = None
                     dispenseState = ST_GLASS_CLEAR
 
                 if dispenseControl == CTL_CANCEL:
-                    logger.info('Cancelled dispensing {}'.format(dispenseDrinkOrder.desc()))
+                    _logger.info('Cancelled dispensing {}'.format(dispenseDrinkOrder.desc()))
                     for pump in pumps:
                         pump.stop()
-                    bus.emit('lights:play', None)
-                    bus.emit('audio:play', 'cancelledDispense')
-                    bus.emit('audio:play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
-                    dispenseDrinkOrder.place_on_hold()
+                    bus.emit('lights/play', None)
+                    bus.emit('audio/play', 'cancelledDispense')
+                    bus.emit('audio/play', 'drinkOrderOnHold', sessionId = dispenseDrinkOrder.sessionId)
+                    dispenseDrinkOrder.placeOnHold()
                     dispenseDrinkOrder = None
                     dispenseState = ST_CANCEL_CLEAR
 
@@ -311,22 +301,22 @@ def _dispenseDrinkOrder(o):
     # all done!
     
     if dispenseState == ST_DISPENSE:
-        logger.info('Done dispensing {}'.format(dispenseDrinkOrder.desc()))
+        _logger.info('Done dispensing {}'.format(dispenseDrinkOrder.desc()))
         drink.timesDispensed = drink.timesDispensed + 1
         drink.save()
         dispenseDrinkOrder.completedDate = datetime.datetime.now()
         dispenseDrinkOrder.save()
         dispenseState = ST_PICKUP
-        bus.emit('lights:play', 'endDispense')
-        bus.emit('audio:play', 'endDispense')
-        bus.emit('audio:play', 'endDispense', sessionId = dispenseDrinkOrder.sessionId)
+        bus.emit('lights/play', 'endDispense')
+        bus.emit('audio/play', 'endDispense')
+        bus.emit('audio/play', 'endDispense', sessionId = dispenseDrinkOrder.sessionId)
         
-    dispenseEvent.clear()
-    bus.emit('barbot:dispenseState', dispenseState, dispenseDrinkOrder)
+    _dispenseEvent.clear()
+    bus.emit('core/dispenseState', dispenseState, dispenseDrinkOrder)
 
     while dispenseState is not None:
-        if dispenseEvent.wait(0.5):
-            dispenseEvent.clear()
+        if _dispenseEvent.wait(0.5):
+            _dispenseEvent.clear()
             if dispenseState == ST_CANCEL_CLEAR or dispenseState == ST_PICKUP:
                 if not glassReady:
                     dispenseState = None
@@ -334,58 +324,41 @@ def _dispenseDrinkOrder(o):
             elif dispenseControl == CTL_OK:
                 dispenseState = None
                     
-    bus.emit('barbot:dispenseState', dispenseState, dispenseDrinkOrder)
-    bus.emit('lights:play', None)
+    bus.emit('core/dispenseState', dispenseState, dispenseDrinkOrder)
+    bus.emit('lights/play', None)
          
     _rebuildMenu()
     
     DrinkOrder.deleteOldCompleted()
 
     
-#@bus.on('model:pump:stateChanged')
-#def _bus_pumpChanged(pump, previousState):
-#    if pump.previousState != Pump.READY and pump.state == Pump.READY:
-#    if pump.previousState != Pump.EMPTY and pump.state == Pump.EMPTY:
-#        _rebuildMenu()
-#    elif pump.previousState == Pump.READY and pump.state != Pump.READY:
-#        _rebuildMenu()
-
-@bus.on('model:drink:saved')
+@bus.on('model/drink/saved')
 def _bus_drinkSaved(drink):
-    if not suppressMenuRebuild:
+    if not _suppressMenuRebuild:
         _rebuildMenu()
 
-@bus.on('model:drink:deleted')
+@bus.on('model/drink/deleted')
 def _bus_drinkDeleted(drink):
     _rebuildMenu()
     
-@bus.on('server:start')
 @db.atomic()
 def _rebuildMenu():
-    global suppressMenuRebuild
-    logger.info('Rebuilding drinks menu')
-    suppressMenuRebuild = True
+    global _suppressMenuRebuild
+    _logger.info('Rebuilding drinks menu')
+    _suppressMenuRebuild = True
     menuUpdated = False
     ingredients = Pump.getReadyIngredients()
     menuDrinks = Drink.getMenuDrinks()
 
-#    print('Current menu:')
-#    for drink in menuDrinks:
-#        print(drink.name())
-    
     # trivial case
     if not ingredients:
-#        print('removing all drinks from the menu')
         for drink in menuDrinks:
             drink.isOnMenu = False
             drink.save()
             menuUpdated = True
         
     else:
-#        print('-------------------------')
         for drink in Drink.getDrinksWithIngredients(ingredients):
-#            print('--Considering ' + drink.name())
-            
             # remove this drink from the existing menu drinks
             menuDrinks = [d for d in menuDrinks if d.id != drink.id]
             
@@ -394,36 +367,27 @@ def _rebuildMenu():
             for di in drink.ingredients:
                 pump = Pump.getPumpWithIngredientId(di.ingredient_id)
                 if not pump or pump.state == Pump.EMPTY or utils.toML(pump.amount, pump.units) < utils.toML(di.amount, di.units):
-#                    print('drink "' + drink.name() + '" is missing ingredient ' + di.ingredient.name)
                     onMenu = False
                     break
             if onMenu != drink.isOnMenu:
-#                print('changing isOnMenu to ' + str(onMenu))
                 drink.isOnMenu = onMenu
                 drink.save()
                 menuUpdated = True
     
         # any drinks in the original list are no longer on the menu
         for drink in menuDrinks:
-#            print('removing "' + drink.name() + '" from the menu')
             drink.isOnMenu = False
             drink.save()
             menuUpdated = True
             
-#    if menuUpdated:
-    bus.emit('barbot:drinksMenuUpdated')
-#        print('menu updated')
-    
-#    print('New menu:')
-#    for drink in Drink.getMenuDrinks():
-#        print(drink.name())
+    bus.emit('barbot/drinksMenuUpdated')
         
     _updateDrinkOrders()
-    suppressMenuRebuild = False
+    _suppressMenuRebuild = False
 
 @db.atomic()
 def _updateDrinkOrders():
-    logger.info('Updating drink orders')
+    _logger.info('Updating drink orders')
     readyPumps = Pump.getReadyPumps()
     for o in DrinkOrder.getWaiting():
         if o.drink.isOnMenu == o.ingredientHold:
