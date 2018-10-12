@@ -1,11 +1,9 @@
 
 import sys, os, time, logging, subprocess, re, time
 from threading import Thread, Event
-from flask_socketio import emit
 
 from .config import config
 from .bus import bus
-from .socket import socket
 
 
 wpaSupplicantNetworkBeginPattern    = re.compile(r"\s*network\s*=\s*\{")
@@ -30,10 +28,6 @@ wpaSupplicantNetworks = []
 def _bus_serverStop():
     exitEvent.set()
     
-@bus.on('client:connect')
-def _bus_clientConnect(request):
-    emit('wifiState', state)
-    
 @bus.on('server:start')
 def _startThread():
     global thread, state
@@ -55,7 +49,7 @@ def _threadLoop():
     logger.info('Wifi thread started')
     while not exitEvent.is_set():
         state = _getState()
-        socket.emit('wifiState', state)
+        bus.emit('wifi:state', state)
         _readWPASupplicant(config.getpath('wifi', 'wpaSupplicantFile'))
         exitEvent.wait(config.getint('wifi', 'checkInterval'))
     logger.info('Wifi thread stopped')
@@ -280,8 +274,8 @@ def _bus_connectToNetwork(params):
     except IOError as e:
         logger.error(e)
     state = _getState()
-    socket.emit('wifiState', state)
-    
+    bus.emit('wifi:state', state)
+
 @bus.on('wifi:disconnectFromNetwork')
 def _bus_disconnectFromNetwork(ssid):
     global state
@@ -294,7 +288,7 @@ def _bus_disconnectFromNetwork(ssid):
         except IOError as e:
             logger.error(e)
         state = _getState()
-        socket.emit('wifiState', state)    
+        bus.emit('wifi:state', state)
 
 @bus.on('wifi:forgetNetwork')
 def _bus_forgetNetwork(ssid):

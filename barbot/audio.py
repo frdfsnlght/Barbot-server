@@ -15,8 +15,6 @@ exitEvent = Event()
 thread = None
 lastModifiedTime = None
 playQueue = LifoQueue()
-started = False
-consoleSessionId = None
 clips = {}
 
 
@@ -38,38 +36,10 @@ def _bus_serverStart():
 def _bus_serverStop():
     exitEvent.set()
 
-@bus.on('client:connect')
-def _bus_clientConnect(request):
-    global consoleSessionId
-    if not consoleSessionId and request.remote_addr == '127.0.0.1':
-        consoleSessionId = request.sid
-        bus.emit('audio:play', 'startup', sessionId = consoleSessionId)
+@bus.on('socket:consoleConnect')
+def _bus_consoleConnect():
+    bus.emit('audio:play', 'startup')
 
-@bus.on('client:disconnect')
-def _bus_clientDisconnect(request):
-    global consoleSessionId
-    if consoleSessionId and request.sid == consoleSessionId:
-        consoleSessionId = None
-
-@bus.on('barbot:restart')
-def _bus_barbotRestart():
-    bus.emit('audio:play', 'barbot:restart')
-    
-@bus.on('barbot:shutdown')
-def _bus_barbotShutdown():
-    bus.emit('audio:play', 'barbot:shutdown')
-
-@bus.on('barbot:drinkOrderSubmitted')
-def _bus_barbotDrinkOrderSubmitted(o):
-    bus.emit('audio:play', 'barbot:drinkOrderSubmitted', remote = True)
-
-@bus.on('barbot:drinkOrderCancelled')
-def _bus_barbotDrinkOrderCancelled(o):
-    bus.emit('audio:play', 'barbot:drinkOrderCancelled', remote = True)
-    
-@bus.on('barbot:drinkOrderHoldToggled')
-def _bus_barbotDrinkOrderHoldToggled(o):
-    bus.emit('audio:play', 'barbot:drinkOrderHoldToggled', remote = True)
 
 @bus.on('barbot:dispenseState')
 def _bus_dispenseState(dispenseState, dispenseDrinkOrder, singleClient = False):
@@ -89,10 +59,12 @@ def _threadLoop():
             _checkClipsFile()
 
 @bus.on('audio:play')
-def _on_audioPlay(clip, sessionId = False):
+def _on_audioPlay(clip, console = True, sessionId = False, broadcast = False):
     playQueue.put_nowait({
         'clip': clip,
+        'console': console,
         'sessionId': sessionId,
+        'broadcast': broadcast,
     })
     
 def _load():
@@ -129,22 +101,18 @@ def _playClip(item):
     if not item['clip'] in clips:
         logger.debug('No configured clips for {}'.format(item['clip']))
         return
-    clip = clips[item['clip']]
+    clipName = item['clip']
+    del(item['clip'])
+    clip = clips[clipName]
     r = random.random()
     for file in clip:
         if r < file[1]:
-            _playFile(file[0], item['sessionId'])
+            bus.emit('socket:playAudio', **{'file': file, **item})
             return
-    logger.error('No file found for {}: r={} !'.format(item['clip'], r))
-            
-def _playFile(file, sessionId = False):
-    logger.debug('Play {} {}'.format(file, sessionId if sessionId else 'broadcast'))
+    logger.warning('No file found for {}!'.format(clipName))
 
-    if sessionId:
-        socket.emit('playAudio', file, room = sessionId)
-    else:
-        socket.emit('playAudio', file)
-    
+# TODO: remove this
+#def _playFile(file):
 #    fullPath = os.path.join(paths.AUDIO_DIR, file)
 #    try:
 #        out = subprocess.run(['aplay', fullPath],

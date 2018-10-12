@@ -1,5 +1,5 @@
 
-import logging, re
+import logging
 from flask import request, session
 from flask_socketio import emit
 from peewee import DoesNotExist
@@ -10,10 +10,6 @@ from ..bus import bus
 from ..db import ModelError
 from ..models.User import User
 
-
-booleanPattern = re.compile(r"(i?)(true|false|yes|no)")
-intPattern = re.compile(r"-?\d+")
-floatPattern = re.compile(r"-?\d*\.\d+")
 
 logger = logging.getLogger('Socket.Default')
 
@@ -27,17 +23,6 @@ def _socket_default_error_handler(e):
 # socket events
 #
     
-@socket.on('connect')
-def _socket_connect():
-    logger.info('Connection opened from ' + request.remote_addr)
-    emit('clientOptions', getClientOptions())
-    bus.emit('client:connect', request)
-
-@socket.on('disconnect')
-def _socket_disconnect():
-    logger.info('Connection closed from ' + request.remote_addr)
-    bus.emit('client:disconnect', request)
-
 @socket.on('login')
 def _socket_login(params):
     user = User.authenticate(params['name'], params['password'])
@@ -169,19 +154,3 @@ def _bus_parentalLock(locked, singleClient = False):
     else:
         socket.emit('parentalLock', locked)
 
-@bus.on('config:reloaded')
-def _but_configReloaded():
-    socket.emit('clientOptions', getClientOptions())
-
-    
-    
-def getClientOptions():
-    opts = dict(config.items('client'))
-    for k, v in opts.items():
-        if booleanPattern.match(v):
-            opts[k] = config.getboolean('client', k)
-        elif intPattern.match(v):
-            opts[k] = config.getint('client', k)
-        elif floatPattern.match(v):
-            opts[k] = config.getfloat('client', k)
-    return opts

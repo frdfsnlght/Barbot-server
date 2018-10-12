@@ -22,7 +22,6 @@ SEGMENTS_ALL = '1:2:3:4'
 
 
 logger = logging.getLogger('Lights')
-started = False
 
 
 @bus.on('server:start')
@@ -31,15 +30,12 @@ def _bus_serverStart():
     savePattern(1, config.get('lights', 'shutdownPattern'))
 
 # TODO: move this somewhere else    
-@bus.on('client:connect')
-def _bus_clientConnect(request):
-    global started
-    if not started and request.remote_addr == '127.0.0.1':
-        started = True
-        try:
-            serial.write('RO', 1)  # power on, turn of lights
-        except serial.SerialError as e:
-            logger.error('Lights error: {}'.format(str(e)))
+@bus.on('socket:consoleConnect')
+def _bus_consoleConnect():
+    try:
+        serial.write('RO', 1)  # power on, turn of lights
+    except serial.SerialError as e:
+        logger.error('Lights error: {}'.format(str(e)))
         
 def setColor(segments, color):
     if config.getboolean('lights', 'enabled'):
