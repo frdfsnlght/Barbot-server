@@ -81,9 +81,23 @@ class DrinkOrder(BarbotModel):
         
     # override
     def delete_instance(self, *args, **kwargs):
+    
+        if self.isBeingDispensed():
+            raise ModelError('This order is currently being dispensed!')
+            
+        for o in self.drinkOrders:
+            if o.isWaiting():
+                raise ModelError('This drink has a pending order!')
+    
         super().delete_instance(*args, **kwargs)
         bus.emit('model/drinkOrder/deleted', self)
             
+    def isWaiting(self):
+        return self.startedDate is None
+        
+    def isBeingDispensed(self):
+        return self.startedDate and self.completedDate is None
+        
     def placeOnHold(self):
         self.startedDate = None
         self.userHold = True

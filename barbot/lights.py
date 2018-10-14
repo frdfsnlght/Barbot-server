@@ -27,7 +27,7 @@ _logger = logging.getLogger('Lights')
 @bus.on('server/start')
 def _bus_serverStart():
     savePattern(0, config.get('lights', 'startupPattern'))
-    savePattern(1, config.get('lights', 'shutdownPattern'))
+    #savePattern(1, config.get('lights', 'shutdownPattern'))
 
 @bus.on('lights/play')
 def _bus_play(patternName):

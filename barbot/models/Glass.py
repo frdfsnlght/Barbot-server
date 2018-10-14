@@ -26,7 +26,7 @@ class Glass(BarbotModel):
         
     @staticmethod
     def deleteById(id):
-        g = Glass.get(Glass.id == item['id'])
+        g = Glass.get(Glass.id == id)
         g.delete_instance()
         
     # override
@@ -41,6 +41,10 @@ class Glass(BarbotModel):
 
     # override
     def delete_instance(self, *args, **kwargs):
+    
+        if self.drinks.execute():
+            raise ModelError('This glass is used by at least one drink!')
+        
         super().delete_instance(*args, **kwargs)
         bus.emit('model/glass/deleted', self)
             

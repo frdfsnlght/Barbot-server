@@ -50,7 +50,7 @@ class Drink(BarbotModel):
         
     @staticmethod
     def deleteById(id):
-        d = Drink.get(Drink.id == item['id'])
+        d = Drink.get(Drink.id == id)
         d.delete_instance()
     
     # override
@@ -70,6 +70,11 @@ class Drink(BarbotModel):
         
     # override
     def delete_instance(self, *args, **kwargs):
+    
+        for o in self.orders:
+            if o.isWaiting():
+                raise ModelError('This drink has a pending order!')
+    
         super().delete_instance(*args, **kwargs)
         bus.emit('model/drink/deleted', self)
     

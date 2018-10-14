@@ -19,6 +19,8 @@ from .models.Pump import Pump
 from .models.User import User
 
 
+_shutdownEventPattern = re.compile(r"POWER-REQUEST")
+
 _booleanPattern = re.compile(r"(i?)(true|false|yes|no)")
 _intPattern = re.compile(r"-?\d+$")
 _floatPattern = re.compile(r"-?\d*\.\d+$")
@@ -235,12 +237,13 @@ def _socket_saveGlass(item):
 
 @socket.on('deleteGlass')
 def _socket_deleteGlass(id):
-    logger.info('deleteGlass')
     try:
         Glass.deleteById(id)
         return success()
     except DoesNotExist:
         return error('Glass not found!')
+    except ModelError as e:
+        return error(e)
          
 @socket.on('getIngredients')
 def _socket_getIngredients():
@@ -264,12 +267,13 @@ def _socket_saveIngredient(item):
 
 @socket.on('deleteIngredient')
 def _socket_deleteIngredient(id):
-    logger.info('deleteIngredient')
     try:
         Ingredient.deleteById(id)
         return success()
     except DoesNotExist:
         return error('Ingredient not found!')
+    except ModelError as e:
+        return error(e)
 
 @socket.on('getDrinks')
 def _socket_getDrinks():
@@ -295,12 +299,13 @@ def _socket_saveDrink(item):
 
 @socket.on('deleteDrink')
 def _socket_deleteDrink(id):
-    logger.info('deleteDrink')
     try:
         Drink.deleteById(id)
         return success()
     except DoesNotExist:
         return error('Drink not found!')
+    except ModelError as e:
+        return error(e)
          
 @socket.on('getDrinksMenu')
 def _socket_getDrinksMenu():
@@ -388,6 +393,14 @@ def socket_cleanPump(params):
 @bus.on('config/reloaded')
 def _but_configReloaded():
     socket.emit('clientOptions', _buildClientOptions())
+    
+@bus.on('serial/event')
+def _bus_serialEvent(e):
+    _logger.debug('Got shutdown request')
+    if _consoleSessionId:
+        m = _shutdownEventPattern.match(e)
+        if m:
+            socket.emit('shutdownRequest', room = _consoleSessionId)
     
 #-------------------------------
 # core

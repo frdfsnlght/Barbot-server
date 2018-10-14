@@ -41,6 +41,10 @@ class Ingredient(BarbotModel):
     
     # override
     def delete_instance(self, *args, **kwargs):
+    
+        if self.drinks.execute():
+            raise ModelError('This ingredient is used by at least one drink!')
+    
         super().delete_instance(*args, **kwargs)
         bus.emit('model/ingredient/deleted', self)
     

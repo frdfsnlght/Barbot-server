@@ -6,7 +6,7 @@ from .config import config
 from .bus import bus
 
 
-_commentPattern = re.compile(r"#(.*)")
+_messagePattern = re.compile(r"#(.*)")
 _errorPattern = re.compile(r"!(.*)")
 _eventPattern = re.compile(r"\*(.*)")
 
@@ -31,7 +31,6 @@ def _bus_serverStart():
     _thread.daemon = True
     _thread.start()
     
-    # TODO: send commands to indicate I've started
 @bus.on('server/stop')
 def _bus_serverStop():
     _exitEvent.set()
@@ -64,7 +63,7 @@ def _readPort():
         _processLine(line.rstrip().decode('ascii'))
 
 def _processLine(line):
-    _logger.debug('got: {}'.format(line))
+    _logger.debug('Receive: {}'.format(line))
     
     if line.lower() == 'ok':
         _responseError = None
@@ -82,9 +81,9 @@ def _processLine(line):
         bus.emit('serial/event', m.group(1))
         return
         
-    m = _commentPattern.match(line)
+    m = _messagePattern.match(line)
     if m:
-        _logger.debug('Received: {}'.format(m.group(1)))
+        _logger.info('Message: {}'.format(m.group(1)))
         return
         
     _responseLines.append(line)
@@ -92,7 +91,7 @@ def _processLine(line):
 def write(line, timeout = 5):
     global _responseLines, _responseError
     with _writeLock:
-        _logger.debug('Sending: {}'.format(line))
+        _logger.debug('Send: {}'.format(line))
         if not _port:
             raise SerialError('serial port is not open')
         _responseLines = []
