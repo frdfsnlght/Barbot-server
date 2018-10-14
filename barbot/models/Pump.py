@@ -256,7 +256,7 @@ class Pump(BarbotModel):
                 self.running = True
                 if self.state == Pump.LOADED or self.state == Pump.READY:
                     self.amount = utils.convertUnits(utils.toML(self.amount, self.units) - amount, 'ml', self.units)
-                    if utils.toML(self.amount, self.units) < config.getint('barbot', 'ingredientEmptyAmount'):
+                    if utils.toML(self.amount, self.units) < config.getint('pumps', 'ingredientEmptyAmount'):
                         self.state = Pump.EMPTY
                 self.save()
             except serial.SerialError as e:

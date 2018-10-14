@@ -100,7 +100,7 @@ def _playClip(item):
     r = random.random()
     for file in clip:
         if r < file[1]:
-            bus.emit('audio/playFile', **{'file': file, **item})
+            bus.emit('audio/playFile', **{'file': file[0], **item})
             return
     _logger.warning('No file found for {}!'.format(clipName))
 

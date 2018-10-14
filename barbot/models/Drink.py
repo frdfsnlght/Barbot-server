@@ -60,8 +60,6 @@ class Drink(BarbotModel):
         if d and self.id != d.id:
             raise ModelError('A drink with the same name already exists!')
     
-        if not self.isFavorite and self.timesDispensed >= config.getint('barbot', 'favoriteDrinkCount'):
-            self.isFavorite
         if self.is_dirty():
             self.updatedDate = datetime.datetime.now()
         if super().save(*args, **kwargs):

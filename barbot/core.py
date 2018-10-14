@@ -65,6 +65,13 @@ def _bus_serialEvent(e):
             bus.emit('core/glassReady', glassReady)
             _dispenseEvent.set()
             
+@bus.on('socket/consoleConnect')
+def _bus_consoleConnect():
+    try:
+        serial.write('RO', timeout = 1)  # power on, turn off lights
+    except serial.SerialError as e:
+        _logger.error(e)
+            
 #-----------------
 # TODO: remove this temp code someday
 glassThread = None
@@ -98,8 +105,7 @@ def restart():
         return
     bus.emit('lights/play', 'restart')
     bus.emit('audio/play', 'restart')
-    
-    
+        
 def shutdown():
     cmd = config.get('server', 'shutdownCommand').split(' ')
     out = subprocess.run(cmd,
@@ -109,6 +115,10 @@ def shutdown():
     if out.returncode != 0:
         _logger.error('Error trying to shutdown: {}'.format(out.stdout))
     return
+    try:
+        serial.write('RT{}'.format(config.get('server', 'shutdownTimer')))
+    except SerialError as e:
+        _logger.error(e)
     bus.emit('lights/play', 'shutdown')
     bus.emit('audio/play', 'shutdown')
     
@@ -131,16 +141,16 @@ def stopPumpSetup():
 def setParentalLock(code):
     if not code:
         try:
-            os.remove(config.getpath('barbot', 'parentalCodeFile'))
+            os.remove(config.getpath('core', 'parentalCodeFile'))
         except IOError:
             pass
     else:
-        open(config.getpath('barbot', 'parentalCodeFile'), 'w').write(code)
+        open(config.getpath('core', 'parentalCodeFile'), 'w').write(code)
     bus.emit('core/parentalLock', True if code else False)
 
 def getParentalCode():
     try:
-        return open(config.getpath('barbot', 'parentalCodeFile')).read().rstrip()
+        return open(config.getpath('core', 'parentalCodeFile')).read().rstrip()
     except IOError:
         return False
 
@@ -303,6 +313,8 @@ def _dispenseDrinkOrder(o):
     if dispenseState == ST_DISPENSE:
         _logger.info('Done dispensing {}'.format(dispenseDrinkOrder.desc()))
         drink.timesDispensed = drink.timesDispensed + 1
+        if not drink.isFavorite and drink.timesDispensed >= config.getint('core', 'favoriteDrinkCount'):
+            drink.isFavorite = True
         drink.save()
         dispenseDrinkOrder.completedDate = datetime.datetime.now()
         dispenseDrinkOrder.save()
@@ -329,8 +341,7 @@ def _dispenseDrinkOrder(o):
          
     _rebuildMenu()
     
-    DrinkOrder.deleteOldCompleted()
-
+    DrinkOrder.deleteOldCompleted(config.getint('core', 'maxDrinkOrderAge'))
     
 @bus.on('model/drink/saved')
 def _bus_drinkSaved(drink):

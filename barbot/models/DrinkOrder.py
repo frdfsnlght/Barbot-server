@@ -43,9 +43,9 @@ class DrinkOrder(BarbotModel):
         )
     
     @staticmethod
-    def deleteOldCompleted():
+    def deleteOldCompleted(secondsOld):
         num = DrinkOrder.delete().where(
-                    DrinkOrder.completedDate < (datetime.datetime.now() - datetime.timedelta(seconds = config.getint('barbot', 'maxDrinkOrderAge')))
+                    DrinkOrder.completedDate < (datetime.datetime.now() - datetime.timedelta(seconds = secondsOld))
                 ).execute()
         if num:
             _logger.info('Deleted {} old drink orders'.format(num))

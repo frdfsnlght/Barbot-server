@@ -35,13 +35,6 @@ def _bus_serverStart():
 def _bus_serverStop():
     _exitEvent.set()
     
-@bus.on('socket/consoleConnect')
-def _bus_consoleConnect():
-    try:
-        write('RO', timeout = 1)  # power on, turn of lights
-    except SerialError as e:
-        _logger.error(e)
-
 def _threadLoop():
     global _port
     _logger.info('Serial thread started')
