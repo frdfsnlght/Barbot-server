@@ -1,5 +1,5 @@
 
-import logging, datetime, time, subprocess, re
+import logging, datetime, time, subprocess, re, random
 from threading import Thread, Event
 
 from .bus import bus
@@ -33,6 +33,7 @@ _requestPumpSetup = False
 _suppressMenuRebuild = False
 _dispenseEvent = Event()
 _lastDrinkOrderCheckTime = time.time()
+_lastIdleAudioCheckTime = time.time()
 
 dispenserHold = False
 pumpSetup = False
@@ -74,23 +75,22 @@ def _bus_consoleConnect():
             
 #-----------------
 # TODO: remove this temp code someday
-glassThread = None
-import os.path
-from . import paths
-@bus.on('server/start')
-def _bus_startGlassThread():
-    global glassThread
-    glassThread = Thread(target = _glassThreadLoop, name = 'BarbotGlassThread', daemon = True)
-    glassThread.start()
-def _glassThreadLoop():
-    global glassReady
-    while not _exitEvent.is_set():
-        newGlassReady = os.path.isfile(os.path.join(paths.VAR_DIR, 'glass'))
-        if newGlassReady != glassReady:
-            glassReady = newGlassReady
-            bus.emit('core/glassReady', glassReady)
-            _dispenseEvent.set()
-        time.sleep(1)
+#glassThread = None
+#import os.path
+#@bus.on('server/start')
+#def _bus_startGlassThread():
+#    global glassThread
+#    glassThread = Thread(target = _glassThreadLoop, name = 'BarbotGlassThread', daemon = True)
+#    glassThread.start()
+#def _glassThreadLoop():
+#    global glassReady
+#    while not _exitEvent.is_set():
+#        newGlassReady = os.path.isfile(os.path.join(os.path.dirname(__file__), '..', 'var', 'glass'))
+#        if newGlassReady != glassReady:
+#            glassReady = newGlassReady
+#            bus.emit('core/glassReady', glassReady)
+#            _dispenseEvent.set()
+#        time.sleep(1)
 # end of temp code
 #---------------------
 
@@ -182,8 +182,9 @@ def setDispenseControl(ctl):
     dispenseControl = ctl
     _dispenseEvent.set()
         
+        
 def _threadLoop():
-    global _lastDrinkOrderCheckTime, _requestPumpSetup, pumpSetup
+    global _lastDrinkOrderCheckTime, _lastDrinkOrderCheckTime, _requestPumpSetup, pumpSetup
     _logger.info('Core thread started')
     while not _exitEvent.is_set():
         if _requestPumpSetup:
@@ -192,19 +193,32 @@ def _threadLoop():
             bus.emit('core/pumpSetup', pumpSetup)
             
         while pumpSetup or dispenserHold or anyPumpsRunning():
+            _checkIdle()
             time.sleep(1)
         
+        t = time.time()
         
-        if (time.time() - _lastDrinkOrderCheckTime) > 5:
-            _lastDrinkOrderCheckTime = time.time()
+        if (t - _lastDrinkOrderCheckTime) > config.getfloat('core', 'drinkOrderCheckInterval'):
+            _lastDrinkOrderCheckTime = t
             o = DrinkOrder.getFirstPending()
             if o:
                 _dispenseDrinkOrder(o)
-                time.sleep(1)
-        else:
-            time.sleep(1)
+                t = time.time()
+                _lastDrinkOrderCheckTime = t
+                _lastIdleAudioCheckTime = t
+                continue
+
+        _checkIdle()
+        time.sleep(1)
             
     _logger.info('Core thread stopped')
+
+def _checkIdle():
+    global _lastIdleAudioCheckTime
+    if (time.time() - _lastIdleAudioCheckTime) > config.getfloat('core', 'idleAudioInterval'):
+        _lastIdleAudioCheckTime = time.time()
+        if random.random() <= config.getfloat('core', 'idleAudioChance'):
+            bus.emit('audio/play', 'idle')
     
 def _dispenseDrinkOrder(o):
     global dispenseState, dispenseDrinkOrder, dispenseControl

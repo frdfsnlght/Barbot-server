@@ -6,3 +6,4 @@ event-bus
 pyserial
 passlib
 bcrypt
+google-cloud-texttospeech

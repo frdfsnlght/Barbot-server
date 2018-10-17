@@ -3,7 +3,6 @@ import os, os.path, configparser, logging, random, subprocess
 from threading import Thread, Event
 from queue import LifoQueue, Empty
 
-from . import paths
 from .socket import socket
 from .bus import bus
 from .config import config
@@ -64,24 +63,33 @@ def _load():
     global _lastModifiedTime, _clips
     if not os.path.isfile(config.getpath('audio', 'clipsFile')):
         return
+    _clipsConfig.clear()
     _clipsConfig.read(config.getpath('audio', 'clipsFile'))
     _lastModifiedTime = os.path.getmtime(config.getpath('audio', 'clipsFile'))
     
     _clips = {}
     for clipName in _clipsConfig.keys():
-        clip = []
+        # validate files, read and total file weights
+        clipFiles = {}
         total = 0
         for (file, v) in _clipsConfig.items(clipName):
+            if not os.path.isfile(os.path.join(config.getpath('audio', 'audioDir'), file)):
+                _logger.warning('Clip file {} not found!'.format(file))
+                continue
+            
             v = 1 if v is None else float(v)
             total = total + v
+            clipFiles[file] = v
+
+        # build clip
+        clip = []
         runningTotal = 0
-        for (file, v) in _clipsConfig.items(clipName):
-            v = 1 if v is None else float(v)
+        for (file, v) in clipFiles.items():
             clip.append((file, runningTotal + (v / total)))
             runningTotal = runningTotal + (v / total)
         if clip:
             _clips[clipName] = clip
-
+            
 def _checkClipsFile():
     if os.path.isfile(config.getpath('audio', 'clipsFile')):
         newTime = os.path.getmtime(config.getpath('audio', 'clipsFile'))

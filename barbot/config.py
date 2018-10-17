@@ -2,7 +2,6 @@
 import os, configparser, logging
 from threading import Thread, Event
 
-from . import paths
 from .bus import bus
 
 
@@ -11,8 +10,9 @@ config = None
 _exitEvent = Event()
 _thread = None
 _lastModifiedTime = None
-_defaultConfig = os.path.join(paths.ETC_DIR, 'config-default.ini')
-_localConfig = os.path.join(paths.ETC_DIR, 'config.ini')
+_rootDir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_defaultConfig = os.path.join(_rootDir, 'etc', 'config-default.ini')
+_localConfig = os.path.join(_rootDir, 'etc', 'config.ini')
 
 
 @bus.on('server/start')
@@ -36,6 +36,7 @@ def _threadLoop():
         newTime = max(os.path.getmtime(_defaultConfig), os.path.getmtime(_localConfig))
         if newTime > _lastModifiedTime:
             _lastModifiedTime = newTime
+            config.clear()
             config.read(_defaultConfig)
             config.read(_localConfig)
             _logger.info('Configuration reloaded')
@@ -58,11 +59,16 @@ def load():
     return config
 
 def _resolvePath(str):
-    str = str.replace('!root', paths.ROOT_DIR)
-    str = str.replace('!bin', paths.BIN_DIR)
-    str = str.replace('!etc', paths.ETC_DIR)
-    str = str.replace('!var', paths.VAR_DIR)
-    str = str.replace('!content', paths.CONTENT_DIR)
-    str = str.replace('!audio', paths.AUDIO_DIR)
-    return str
+    if os.path.isabs(str):
+        return str
+    else:
+        return os.path.normpath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), str))
+        
+#    str = str.replace('!root', paths.ROOT_DIR)
+#    str = str.replace('!bin', paths.BIN_DIR)
+#    str = str.replace('!etc', paths.ETC_DIR)
+#    str = str.replace('!var', paths.VAR_DIR)
+#    str = str.replace('!content', paths.CONTENT_DIR)
+#    str = str.replace('!audio', paths.AUDIO_DIR)
+#    return str
         
