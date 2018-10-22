@@ -9,6 +9,7 @@ from .bus import bus
 from .db import ModelError
 from . import core
 from . import wifi
+from . import audio
 
 from .models.Drink import Drink
 from .models.DrinkIngredient import DrinkIngredient
@@ -97,6 +98,7 @@ def _socket_connect():
     bus.emit('socket/connect', request)
     if not _consoleSessionId and request.remote_addr == '127.0.0.1':
         _consoleSessionId = request.sid
+        emit('volume', audio.getVolume())
         bus.emit('socket/consoleConnect')
 
 @socket.on('disconnect')
@@ -141,9 +143,13 @@ def _socket_shutdown():
     core.shutdown()
     return success()
 
+@socket.on('setVolume')
+def _socket_setVolume(volume):
+    audio.setVolume(float(volume))
+    return success()
+
 @socket.on('setParentalLock')
 def _socket_setParentalLock(code):
-    _logger.info('setParentalLock')
     core.setParentalLock(code)
     return success()
     
@@ -453,6 +459,11 @@ def _bus_playFile(file, console, sessionId, broadcast):
             _logger.debug('Play {} on console'.format(file))
             socket.emit('playAudio', file, room = _consoleSessionId)
 
+@bus.on('audio/volume')
+def _bus_volume(volume):
+    if _consoleSessionId:
+        socket.emit('volume', volume, room = _consoleSessionId)
+        
 #-------------------------------
 # glass
 #

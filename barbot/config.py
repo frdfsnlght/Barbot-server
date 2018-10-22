@@ -33,14 +33,8 @@ def _threadLoop():
     global _lastModifiedTime
     while not _exitEvent.is_set():
         _exitEvent.wait(config.getfloat('server', 'configCheckInterval'))
-        newTime = max(os.path.getmtime(_defaultConfig), os.path.getmtime(_localConfig))
-        if newTime > _lastModifiedTime:
-            _lastModifiedTime = newTime
-            config.clear()
-            config.read(_defaultConfig)
-            config.read(_localConfig)
-            _logger.info('Configuration reloaded')
-            bus.emit('config/reloaded')
+        if max(os.path.getmtime(_defaultConfig), os.path.getmtime(_localConfig)) > _lastModifiedTime:
+            _load()
     
 def load():
     global config, _lastModifiedTime
@@ -51,12 +45,17 @@ def load():
         }
     )
     config.optionxform = str    # preserve option case
+    _load()
+    return config
+
+def _load():
+    global _lastModifiedTime
+    _lastModifiedTime = max(os.stat(_defaultConfig).st_mtime, os.stat(_localConfig).st_mtime)
+    config.clear()
     config.read(_defaultConfig)
     config.read(_localConfig)
-    
-    _lastModifiedTime = max(os.stat(_defaultConfig).st_mtime, os.stat(_localConfig).st_mtime)
-    
-    return config
+    _logger.info('Configuration loaded')
+    bus.emit('config/loaded')
 
 def _resolvePath(str):
     if os.path.isabs(str):

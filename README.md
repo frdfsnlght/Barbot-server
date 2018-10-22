@@ -5,7 +5,6 @@ Barbot's server.
 * python3
 
 ## TODO
-
 * record audio
 
 * merge repos into one

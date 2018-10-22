@@ -5,11 +5,14 @@ __pycache__/
 
 var/*.log
 var/*.db*
+# TODO: remove glass
 var/glass
 var/parentalCode
+var/volume
 etc/config.ini
 content
-audio/clips.ini
+audio/*.ini
+audio/*.map
 audio/*.mp3
 audio/*.wav
 audio/*.ogg

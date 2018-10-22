@@ -35,6 +35,11 @@ def send_img(path):
     _logger.debug('Request for /img/{}'.format(path))
     return send_from_directory(config.getpath('server', 'contentDir') + '/img', path)
     
+@app.route('/media/<path:path>')
+def send_media(path):
+    _logger.debug('Request for /media/{}'.format(path))
+    return send_from_directory(config.getpath('server', 'contentDir') + '/media', path)
+    
 @app.route('/favicon/<path:path>')
 def send_favicon(path):
     _logger.debug('Request for /favicon/{}'.format(path))

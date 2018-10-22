@@ -40,7 +40,7 @@ def _threadLoop():
     _logger.info('Serial thread started')
     try:
         _port = serial.Serial(config.get('serial', 'port'), config.getint('serial', 'speed'), timeout = None)
-        _logger.info('Serial _port {} opened at {}'.format(_port.name, _port.baudrate))
+        _logger.info('Serial port {} opened at {}'.format(_port.name, _port.baudrate))
         while not _exitEvent.is_set():
             _readPort()
     except IOError as e:
@@ -86,7 +86,7 @@ def write(line, timeout = 5):
     with _writeLock:
         _logger.debug('Send: {}'.format(line))
         if not _port:
-            raise SerialError('serial port is not open')
+            raise SerialError('Serial port is not open!')
         _responseLines = []
         _responseError = None
         _responseReceived.clear()
